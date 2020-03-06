@@ -1,0 +1,1005 @@
+// GBitmap - Low level WinG primitives.
+// Copyright (c) 1995 Tony Miceli
+
+#include "stdafx.h"
+#include "wing.h"
+#include "gbitmap.h"
+
+#define PROLOGUE  _asm {     \
+    _asm    push    ebp      \
+    _asm    mov     ebp, esp \
+}
+
+
+#define PROLOGUE_LOCALS _asm { \
+    _asm    push    ebp        \
+    _asm    mov     ebp, esp   \
+    _asm    sub     esp, __LOCAL_SIZE   /* Allocate space for locals */ \
+}
+
+#define PROLOGUE_THIS   _asm { \
+    _asm    push    ebp        \
+    _asm    mov     ebp, esp   \
+    _asm    sub     esp, __LOCAL_SIZE       /* Allocate space for locals */ \
+    _asm    mov     dword ptr [this], ecx   /* Set up the this pointer (Hidden parameter */ \
+}                                           /* passed via ECX)                           */ 
+
+#define EPILOGUE(argspace) _asm {                            \
+    _asm    leave                                            \
+    _asm    ret     argspace        /* remove args from stack */ \
+}
+
+WORD nRndSeed = 0xa1a0;
+
+CWinGBitmap::CWinGBitmap(CWnd *pParent, WORD nWidth, WORD nHeight)
+            :m_pParent(pParent),
+             m_pfnFrameCallback(NULL),
+             m_bRefresh(FALSE),
+             m_ghBitmapMonochrome(NULL),
+             m_hpSurfaceBits(NULL),
+             m_rowLookup(NULL)
+{ 
+    if(nWidth && nHeight)
+        CreateWinGDC(nWidth, nHeight);
+
+    // Install the interrupt-driven frame handler
+    InstallFrameHandler(DEFAULT_FRAME_RATE); // Update display 5 frames/second
+
+    // Reset the update rectangle
+    m_rctUpdateRect.left = m_rctUpdateRect.right = m_rctUpdateRect.top = m_rctUpdateRect.bottom = 0L;
+}
+
+CWinGBitmap::~CWinGBitmap()
+{
+    // Uninstall the interrupt-driven frame handler
+    RemoveFrameHandler();
+
+    if(m_rowLookup)
+        delete [] m_rowLookup;
+
+    DestroyWinGDC();
+}
+
+// Code to generate WinG bitmap
+
+void CWinGBitmap::CreateWinGDC(WORD nWidth, WORD nHeight)
+{
+    HBITMAP hBitmapNew;
+    struct {
+        BITMAPINFOHEADER InfoHeader;
+        RGBQUAD ColorTable[256];
+    } Info;
+    
+    m_Orientation=1; // Assume bottom-up DIB
+    // Set up an optimal bitmap
+    if(WinGRecommendDIBFormat((BITMAPINFO far *)&Info))
+    {
+        //  make sure it's 8bpp and remember the orientation
+        Info.InfoHeader.biBitCount = 8;
+        Info.InfoHeader.biCompression = BI_RGB;
+        if (Info.InfoHeader.biHeight < 0)
+            m_Orientation = -1;
+    }
+    else
+    {
+        //  set it up ourselves
+        Info.InfoHeader.biSize = sizeof(BITMAPINFOHEADER);
+        Info.InfoHeader.biPlanes = 1;
+        Info.InfoHeader.biBitCount = 8;
+        Info.InfoHeader.biCompression = BI_RGB;
+        Info.InfoHeader.biSizeImage = 0;
+        Info.InfoHeader.biClrUsed = 0;
+        Info.InfoHeader.biClrImportant = 0;
+    }
+
+    // Set the width and height of the DIB
+    Info.InfoHeader.biHeight = m_Orientation * (m_nDIBHeight = nHeight);
+    Info.InfoHeader.biWidth  = m_nDIBWidth = nWidth;
+
+    // Set up a simple grey-scale colour table
+    for( int i=0; i<256; ++i )
+    {
+        Info.ColorTable[i].rgbRed   = i;
+        Info.ColorTable[i].rgbBlue  = i;
+        Info.ColorTable[i].rgbGreen = i;
+        Info.ColorTable[i].rgbReserved = 0;
+    }
+
+    // Create a WinGDC and Bitmap, then select
+    if((m_hWinGDC = WinGCreateDC()) != NULL)
+    {
+        hBitmapNew = WinGCreateBitmap(m_hWinGDC, (BITMAPINFO far *)&Info,
+                                                 &m_hpSurfaceBits);
+        if (hBitmapNew)
+        {
+            m_ghBitmapMonochrome = (HBITMAP)SelectObject(m_hWinGDC, hBitmapNew);
+            RECT rect = {0, 0, m_nDIBWidth, m_nDIBHeight};
+            ::FillRect(m_hWinGDC, &rect, (HBRUSH)GetStockObject(BLACK_BRUSH));
+            WinGSetDIBColorTable(m_hWinGDC, 0, 256, Info.ColorTable);
+
+            // Build row lookup table for pixel coordinate calculations
+            // NB.  These calculations assume a byte-per-pixel bitmap scheme
+            m_rowLookup = new LONG[m_nDIBHeight];
+            ASSERT(m_rowLookup);
+            
+            m_rowBytes = (m_nDIBWidth + sizeof(LONG)-1) & ~(sizeof(LONG)-1); // longword aligned
+            WORD row;
+            LONG rowOffset;
+            
+            if(m_Orientation < 0)
+            {
+                rowOffset = (LONG)m_hpSurfaceBits;
+                m_rowAdd  = m_rowBytes;
+            }
+            else
+            {
+                rowOffset = (LONG)m_hpSurfaceBits + (m_nDIBHeight-1)*m_rowBytes,
+                m_rowAdd  = -m_rowBytes;
+            }
+
+            for(row=0; row<m_nDIBHeight; row++, rowOffset+=m_rowAdd)
+                m_rowLookup[row] = rowOffset;
+        }
+        else
+        {
+            DeleteDC(m_hWinGDC);
+            m_hWinGDC = 0;
+        }
+    }
+}
+
+void CWinGBitmap::DestroyWinGDC()
+{
+    HBITMAP hBitmapOld;
+
+    if (m_hWinGDC)
+    {
+        // Select the stock 1x1 monochrome bitmap back in
+        hBitmapOld = (HBITMAP)SelectObject(m_hWinGDC, m_ghBitmapMonochrome);
+        DeleteObject(hBitmapOld);
+        DeleteDC(m_hWinGDC);
+        m_hWinGDC = 0;
+    }
+}
+
+HDC CWinGBitmap::Create(WORD nWidth, WORD nHeight)
+{
+    if(m_hWinGDC)
+        DestroyWinGDC();
+
+    CreateWinGDC(nWidth, nHeight);
+
+    return m_hWinGDC;
+}
+
+void CWinGBitmap::Destroy()
+{
+    if(m_hWinGDC)
+    {
+        DestroyWinGDC();
+        m_hWinGDC=0;
+    }
+}
+
+__declspec(naked) void CWinGBitmap::SetPixel(LONG Xpos, LONG Ypos, BYTE PixCol)
+{
+
+    PROLOGUE; // Prologue code. Remove this if not using naked declaration specifier.
+
+    __asm
+    {
+            // Calculate screen offset: EDI = m_rowLookup[Ypos]+(LONG)Xpos
+
+            mov     eax, Ypos
+            mov     edi, [ecx]CWinGBitmap.m_rowLookup       // Lookup screen address value
+            mov     edi, dword ptr [edi + eax*4]            // for the Y offset.
+            add     edi, Xpos                                                       // [EDI] -> Destination bitmap
+        
+            mov     al, PixCol
+            mov     [edi], al                                                       // Output pixel colour index
+    }
+    
+    EPILOGUE(12); // Epilogue code. Remove this if not using naked declaration specifier.
+    // (3 LONGS = 12 argspace)
+}
+
+__declspec(naked) BYTE CWinGBitmap::GetPixel(LONG Xpos, LONG Ypos)
+{
+    PROLOGUE; // Prologue code. Remove this if not using naked declaration specifier.
+
+    __asm
+    {
+            // Calculate screen offset: EDI = m_rowLookup[Ypos]+(LONG)Xpos
+
+            mov     eax, Ypos 
+            mov     edi, [ecx]CWinGBitmap.m_rowLookup       // Lookup screen address value
+            mov     edi, dword ptr [edi + eax*4]            // for the Y offset.
+            add     edi, Xpos                                                       // [EDI] -> Destination bitmap
+        
+            mov     al, [edi]                                                       // Get pixel colour index
+    }
+    
+    EPILOGUE(8);  // Epilogue code. Remove this if not using naked declaration specifier.
+          // (2 LONGS = 8 argspace)
+}
+
+__declspec(naked) void CWinGBitmap::BitBlt(LONG nXDest, LONG nYDest, 
+                                           LPVOID pSrc, ULONG nSrcWidth, ULONG nSrcHeight,
+                                           LONG dwRop)
+{
+    long SrcModulo,         // Source data modulo value
+         DestModulo;    // Destination data modulo value
+
+    PROLOGUE_LOCALS; // Prologue code. Remove this if not using naked declaration specifier.
+
+    __asm
+    {
+            pushf                                                   // Save state of direction flag
+
+/////////////////////////////////////////////////////////////////////////////////////
+// Generic validation code.  Determines actual rectangle to blit (if any is required)
+
+            mov     esi, dword ptr [pSrc]   // Set the source pointer
+
+            mov     edx, nSrcWidth          // Round width up to nearest longword boundary
+            add     edx, 3
+            and     edx, 0xfffffffc         // edx == SrcRowBytes
+    
+            mov     eax, nXDest
+            or      eax, eax                // Test to see whether nXDest < 0
+            jns     ok1
+
+            sub     esi, eax                // pSrc -= nXDest
+            add     nSrcWidth, eax          // nSrcWidth += nXDest
+            jng     BitBltExit              // if nSrcWidth + nXDest <= 0, nothing to draw
+            xor     eax, eax                // nXDest = 0
+
+ok1:        cmp     eax, [ecx]CWinGBitmap.m_nDIBWidth // if nXDest > m_nDIBWidth, nothing
+            jge     BitBltExit                        // to draw
+
+            mov     edi, eax
+            add     edi, nSrcWidth
+            cmp     edi, [ecx]CWinGBitmap.m_nDIBWidth
+            jng     ok2                     // If nXDest + nSrcWidth > m_nDIBWidth 
+
+            mov     edi, [ecx]CWinGBitmap.m_nDIBWidth
+            sub     edi, eax
+            mov     nSrcWidth, edi          // then nSrcWidth = m_nDIBWidth - nXDest
+
+ok2:        mov     ebx, nYDest
+            or      ebx, ebx                // Test to see whther nYDest < 0
+            jns     ok3
+
+            add     nSrcHeight, ebx         // nSrcHeight += nYDest
+            jng     bitBltExit              // if nSrcHeight + nYDest <= 0, nothing to draw
+            xor     ebx, ebx                // nYDest = 0
+
+ok3:        cmp     ebx, [ecx]CWinGBitmap.m_nDIBHeight // if nYDest > m_nDIBHeight, nothing
+            jge     BitBltExit                         // to draw
+
+            mov     edi, nSrcHeight
+            push    edi                     // Save oringinal nSrcHeight value
+            add     edi, ebx
+            cmp     edi, [ecx]CWinGBitmap.m_nDIBHeight
+            jng     ok4                     // If nYDest + nSrcHeight > m_nDIBHeight
+
+            mov     edi, [ecx]CWinGBitmap.m_nDIBHeight
+            sub     edi, ebx
+            mov     nSrcHeight, edi         // then nSrcHeight = m_nDIBHeight - nYDest
+
+ok4:        mov     edi, [ecx]CWinGBitmap.m_rowLookup       // Calc destination screen address
+            mov     edi, dword ptr [edi + ebx*4]    
+            add     edi, eax                                // pDest = m_rowLookup[nYDest]+nXDest
+            
+            // Merge coordinates with the update rectangle
+            cmp     eax, [ecx]CWinGBitmap.m_rctUpdateRect.left
+            jge     nox1
+            mov     [ecx]CWinGBitmap.m_rctUpdateRect.left, eax
+
+nox1:       add     eax, nSrcWidth                          // eax now = x2
+            cmp     eax, [ecx]CWinGBitmap.m_rctUpdateRect.right
+            jle     nox2
+            mov     [ecx]CWinGBitmap.m_rctUpdateRect.right, eax
+
+nox2:       cmp     ebx, [ecx]CWinGBitmap.m_rctUpdateRect.top
+            jge     nox3
+            mov     [ecx]CWinGBitmap.m_rctUpdateRect.top, ebx
+
+nox3:       add     ebx, nSrcHeight                                                         // ebx now = y2
+            cmp     ebx, [ecx]CWinGBitmap.m_rctUpdateRect.bottom
+            jle     nox4
+            mov     [ecx]CWinGBitmap.m_rctUpdateRect.bottom, ebx
+                                                                            
+nox4:       mov     ebx, edx
+            add     ebx, nSrcWidth
+            mov     SrcModulo, ebx                  // SrcModulo = nSrcWidth + SrcRowBytes
+
+            mov     ebx, [ecx]CWinGBitmap.m_rowAdd
+            sub     ebx, nSrcWidth
+            mov     DestModulo, ebx                 // DestModulo = m_rowAdd - nSrcWidth
+
+            pop     eax                             // eax = original nSrcHeight value
+            dec     eax
+            mul     edx
+            add     esi, eax                        // pSrc += (nSrcHeight-1)*SrcRowBytes
+
+            mov     edx, nSrcHeight                 // Number of rows to copy
+            mov     ebx, nSrcWidth                  // Number of bytes to copy per row
+            
+            cld                                     // Clear the direction flag
+
+            mov     eax, dwRop
+            or      eax, eax                        // Default is BLT_SRCCOPY (0)
+            jnz     test2
+            call    srcCopy                         // Perform solid image copy
+            jmp     bitBltExit
+
+test2:      cmp     eax, BLT_TRANSCOPY
+            jnz     test3
+            call    transCopy                       // Perform transparent image copy
+
+test3:
+
+bitBltExit: popf                                    // Restore direction flag state
+    }
+
+    EPILOGUE(12); // Epilogue code. Remove this if not using naked declaration specifier.
+          // (3 LONGS = 12 argspace)
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+// BitBlt Implementations
+
+/////////////////////////////////////////////////////////////////////////////////////
+// srcCopy - Unconditionally copies source image to destination
+
+    __asm 
+    {
+
+srcCopy:    mov     ecx, ebx
+            shr     ecx, 2              // Calculate the number of longwords to copy
+            rep     movsd               // Copy ecx longwords
+
+            mov     ecx, ebx
+            and     ecx, 3              // Calculate the number of remaining bytes
+            rep     movsb               // Copy ecx bytes
+                
+            sub     esi, SrcModulo      // Move to next source row
+            add     edi, DestModulo     // Move to next destination row
+                
+            dec     edx                 // Repeat until all rows copied
+            jnz     srcCopy
+            ret
+
+/////////////////////////////////////////////////////////////////////////////////////
+// transCopy - Copies all non-zero source image pixels to destination.  This allows
+//                         for a transparency effect.
+
+transCopy:  mov     ecx, nSrcWidth
+            shr     ecx, 2              // Calculate the number of longwords to copy
+            jz      doBytes
+
+longLoop:   lodsd
+            mov     ebx, [edi]
+            or      al, al
+            jz      doPiX2
+            mov     bl, al
+
+doPiX2:     ror     ebx, 8
+            shr     eax, 8
+            or      al, al
+            jz      doPix3
+            mov     bl, al
+
+doPix3:     ror     ebx, 8
+            shr     eax, 8
+            or      al, al
+            jz      doPix4
+            mov     bl, al
+
+doPix4:     ror     ebx, 8
+            shr     ax, 8
+            jz      endPix
+            mov     bl, al
+
+endPix:     ror     ebx, 8
+            mov     [edi], ebx
+            add     edi, 4
+            loop    longLoop
+
+doBytes:    mov     ecx, nSrcWidth
+            and     ecx, 3               // Calculate the number of remaining bytes
+            jz      doLoop
+
+byteLoop:   lodsb
+            or      al, al
+            jz      doNextByte
+            mov     [edi], al
+doNextByte: inc     edi
+            loop    byteLoop
+
+doLoop:     sub     esi, SrcModulo       // Move to next source row
+            add     edi, DestModulo      // Move to next destination row
+
+            dec     edx                  // Repeat until all rows copied
+            jnz     transCopy
+            ret
+    }
+}                                                                                         
+                                        
+/*__declspec(naked)*/ 
+//void CWinGBitmap::RotateBlt(LONG nXDest, LONG nYDest, 
+//                                                                                      LPVOID pSrc, ULONG nSrcWidth, ULONG nSrcHeight,
+//                                                                                      CHAR nAngle)
+//{
+//      long Ypos=0;
+//  
+//      sineTable[nAngle]
+//      DrawLine(LONG X1, LONG Y1, LONG X2, LONG Y2, BYTE LineCol);
+
+/////////////////////////////////////////////////////////////////////////////////////
+// FillRect - Fills rectangle (nXpos, nYPos) - (nXpos + nWidth, nYPos + nHeight)
+//                        with specified colour.
+__declspec(naked) void CWinGBitmap::FillRect(LONG nXpos,  LONG nYpos, 
+                                             LONG nWidth, LONG nHeight, BYTE PixCol)
+{
+    PROLOGUE; // Prologue code. Remove this if not using naked declaration specifier.
+
+    _asm   // Validate the specified rectangle
+    {
+            mov     eax, nXpos
+            mov     ebx, nYpos
+            mov     esi, nWidth
+            mov     edi, nHeight
+
+            or      eax, eax                          // Test to see whether nXDest < 0
+            jns     ok1
+
+            add     esi, eax                          // nWidth += nXpos
+            jng     fillExit                          // if nWidth + nXpos <= 0, nothing to draw
+            xor     eax, eax                          // nXpos = 0
+
+ok1:        cmp     eax, [ecx]CWinGBitmap.m_nDIBWidth // if nXpos > m_nDIBWidth, nothing
+            jge     fillExit                          // to draw
+
+            mov     edx, eax
+            add     edx, esi
+            cmp     edx, [ecx]CWinGBitmap.m_nDIBWidth
+            jng     ok2                               // If nXpos + nWidth > m_nDIBWidth 
+
+            mov     esi, [ecx]CWinGBitmap.m_nDIBWidth
+            sub     esi, eax                          // then nWidth = m_nDIBWidth - nXpos
+
+ok2:        or      ebx, ebx                          // Test to see whther nYpos < 0
+            jns     ok3
+
+            add     edi, ebx                          // nHeight += nYpos
+            jng     fillExit                          // if nHeight + nYpos <= 0, nothing to draw
+            xor     ebx, ebx                          // nYpos = 0
+
+ok3:        cmp     ebx, [ecx]CWinGBitmap.m_nDIBHeight // if nYpos > m_nDIBHeight, nothing
+            jge     fillExit                           // to draw
+
+            mov     edx, edi
+            add     edx, ebx
+            cmp     edx, [ecx]CWinGBitmap.m_nDIBHeight
+            jng     ok4                               // If nYpos + nHeight > m_nDIBHeight
+
+            mov     edi, [ecx]CWinGBitmap.m_nDIBHeight
+            sub     edi, ebx                          // then nHeight = m_nDIBHeight - nYpos
+
+ok4:        mov     edx, edi                          // edx = nHeight
+
+            mov     edi, [ecx]CWinGBitmap.m_rowLookup // Calc destination screen address
+            mov     edi, dword ptr [edi + ebx*4]    
+            add     edi, eax                          // pDest = m_rowLookup[nYpos]+nXpos
+            
+            mov     ebx, [ecx]CWinGBitmap.m_rowAdd
+            sub     ebx, esi                          // Modulo = m_rowAdd - nWidth
+
+            pushf
+            cld                                                             // Clear the direction flag
+    }
+
+    __asm   // Fill the rectangle
+    {
+            mov     cl, byte ptr [PixCol]   // Get pixel colour (LSB of PixCol)
+            mov     al, cl
+            shl     ax, 8
+            mov     al, cl
+            shl     eax, 8
+            mov     al, cl
+            shl     eax, 8
+            mov     al, cl
+
+fillLoop:   mov     ecx, esi
+            shr     ecx, 2                  // Calculate the number of longwords to fill
+            rep     stosd                   // Fill ecx longwords
+            
+            mov     ecx, esi
+            and     ecx, 3                  // Calculate the number of remaining bytes
+            rep     stosb                   // Fill ecx bytes
+                
+            add     edi, ebx                // Move to next destination row
+                
+            dec     edx                     // Repeat until all rows filled
+            jnz     fillLoop
+
+            popf                            // Restore state of direction flag
+
+fillExit:
+    }                                        
+        
+    EPILOGUE(20); // Epilogue code. Remove this if not using naked declaration specifier.
+          // (5 LONGS = 20 argspace)
+}
+
+
+// DrawLine - Draws line from (X1, Y1) up to, but not including (X2, Y2)
+//
+void CWinGBitmap::DrawLine(LONG X1, LONG Y1, LONG X2, LONG Y2, BYTE LineCol)
+{
+    long width,     // Width of line * 1024
+         height,    // Height of line * 1024
+         nSteps,    // No. of points to plot
+         Xinc,      // Increment for X direction
+         Yinc;      // Increment for Y direction
+    char isdx;      // Flag to indicate if x distance is greatest
+    
+    __asm
+    {
+            mov     ecx, this
+            mov     eax, [ecx]CWinGBitmap.m_nDIBWidth
+            shl     eax, 10
+            mov     width, eax      // width = m_nDIBWidth * 1024
+
+            mov     eax, [ecx]CWinGBitmap.m_nDIBHeight
+            shl     eax, 10
+            mov     height, eax     // height = m_nDIBHeight * 1024
+
+            mov     isdx, 1
+
+            mov     ebx, X1
+            mov     ecx, Y1
+            mov     esi, X2
+            mov     edi, Y2
+
+            mov     eax, esi
+            sub     eax, ebx
+            jns     next1
+            neg     eax             // EAX = dx = abs(X2-X1)
+
+next1:      mov     edx, edi
+            sub     edx, ecx
+            jns     next2
+            neg     edx             // EDX = dy = abs(Y2-Y1)
+
+next2:      mov     nSteps, eax
+            cmp     eax, edx
+            jg      xgreater
+            mov     nSteps, edx     // nSteps = Maximum difference
+            dec     isdx            // isdx = 0
+    
+xgreater:   shl     ebx, 10         // X1 *= 1024
+            shl     ecx, 10         // Y1 *= 1024
+            shl     esi, 10         // X2 *= 1024
+            shl     edi, 10         // Y2 *= 1024
+
+            cmp     nSteps, 0
+            jnz     stepsNZ         // if nSteps == 0
+            sub     eax, eax
+            mov     Xinc, eax       // Xinc = 0
+            mov     Yinc, eax       // Yinc = 0
+            jmp     clipIt
+            
+stepsNZ:    mov     eax, esi
+            sub     eax, ebx
+            cdq                     // Sign extend EAX -> EDX:EAX
+            idiv    nSteps
+            mov     Xinc, eax       // Xinc = (dx*1024)/nSteps
+
+            mov     eax, edi
+            sub     eax, ecx
+            cdq                     // Sign extend EAX -> EDX:EAX
+            idiv    nSteps
+            mov     Yinc, eax       // Yinc = (dy*1024)/nSteps
+            
+    //
+    // Clip the line if necessary
+    //
+
+clipIt:     test    ebx, ebx        
+            jns     x1test2         // X1 < 0 ?
+            test    esi, esi
+            js      lineExit        // X2 < 0 as well ?  If so, nothing to draw
+
+            mov     eax, ebx
+            neg     eax
+            imul    Yinc
+            sar     eax, 10
+            add     ecx, eax        // Y1 += Yinc * -X1/1024
+
+            sub     ebx, ebx        // X1 = 0
+            jmp     y1test
+
+x1test2:    cmp     ebx, width      // X1 >= width ?
+            jl      y1test
+            cmp     esi, width
+            jge     lineExit        // X2 >= width as well ?  If so, nothing to draw
+
+            mov     eax, width
+            dec     eax
+            neg     eax
+            add     eax, ebx
+            imul    Yinc            // This may lose 1 MSB into EDX, if so, there may be trouble
+            sar     eax, 10         // put before previous line ????
+            add     ecx, eax        // Y1 += (Yinc * (X1-(width-1)))/1024
+
+            mov     ebx, width
+            sub     ebx, 1024       // X1 = width-1024
+
+y1test:     test    ecx, ecx        // Y1 < 0 ?
+            jns     y1test2
+            test    edi, edi
+            js      lineExit        // Y2 < 0 as well ?  If so, nothing to draw
+
+            mov     eax, ecx
+            sar     eax, 10
+            neg     eax
+            imul    Xinc            
+            add     ebx, eax        // X1 += Xinc * -Y1/1024
+
+            sub     ecx, ecx        // Y1 = 0
+            jmp     x2test
+
+y1test2:    cmp     ecx, height     // Y1 >= height ?
+            jl      x2test
+            cmp     edi, height
+            jge     lineExit        // Y2 >= height as well ?  If so, nothing to draw
+
+            mov     eax, height
+            dec     eax
+            neg     eax
+            add     eax, ecx
+            imul    Xinc            // This may lose 1 MSB into EDX, if so, there may be trouble
+            sar     eax, 10
+            add     ebx, eax        // X1 += (Xinc * (Y1-(height-1)))/1024
+
+            mov     ecx, height
+            sub     ecx, 1024       // Y1 = height-1024
+
+x2test:     // First make sure that any Y1 validation did not throw X1 out of range
+            test    ebx, ebx        // X1 < 0
+            js      lineExit
+            cmp     ebx, width      // X1 >= width
+            jge     lineExit
+
+            test    esi, esi
+            jns     x2test2         // X2 < 0 ?
+
+            mov     eax, ebx
+            neg     eax             // EAX = -X1
+            mov     edx, edi
+            sub     edx, ecx        // EDX = Y2-Y1
+            imul    edx             // This may lose 1 MSB into EDX, if so, there may be trouble
+            sub     esi, ebx        // ESI = X2-X1
+            idiv    esi
+            add     eax, ecx
+            mov     edi, eax        // Y2 = Y1 + (Y2-Y1)*(-X1)/(X2-X1)
+
+            sub     esi, esi        // X2 = 0
+            jmp     y2test
+
+x2test2:    cmp     esi, width
+            jl      y2test          // X2 >= width ?
+
+            mov     eax, width
+            dec     eax
+            sub     eax, ebx        // EAX = (width-1)-X1
+            mov     edx, edi
+            sub     edx, ecx        // EDX = Y2-Y1
+            imul    edx             // This may lose 1 MSB into EDX, if so, there may be trouble
+            sub     esi, ebx        // ESI = X2-X1
+            idiv    esi
+            add     eax, ecx
+            mov     edi, eax        // Y2 = Y1 + (Y2-Y1)*((width-1)-X1)/(X2-X1)
+
+            mov     esi, width
+            sub     esi, 1024       // X2 = width-1024
+
+y2test:     test    edi, edi
+            jns     y2test2         // Y2 < 0 ?
+
+            mov     eax, ecx
+            neg     eax             // EAX = -Y1
+            mov     edx, esi
+            sub     edx, ebx        // EDX = X2-X1
+            imul    edx             // This may lose 1 MSB into EDX, if so, there may be trouble
+            sub     edi, ecx        // EDI = Y2-Y1
+            idiv    edi
+            add     eax, ebx
+            mov     esi, eax        // X2 = X1 + (X2-X1)*(-Y1)/(Y2-Y1)
+
+            sub     edi, edi        // Y2 = 0
+            jmp     clipEnd
+
+y2test2:    cmp     edi, height
+            jl      clipEnd
+
+            mov     eax, height
+            dec     eax
+            sub     eax, ecx        // EAX = (height-1)-Y1
+            mov     edx, esi
+            sub     edx, ebx        // EDX = X2-X1
+            imul    edx             // This may lose 1 MSB into EDX, if so, there may be trouble
+            sub     edi, ecx        // EDI = Y2-Y1
+            idiv    edi
+            add     eax, ebx
+            mov     esi, eax        // X2 = X1 + (X2-X1)*((height-1)-Y1)/(Y2-Y1);
+
+            mov     edi, height
+            sub     edi, 1024       // Y2 = height-1024;
+
+clipEnd:    // First make sure that any Y2 validation did not throw X2 out of range
+            test    esi, esi        // X2 < 0
+            js      lineExit
+            cmp     esi, width      // X2 >= width
+            jge     lineExit
+
+            cmp     isdx, 1
+            jne     ygreater
+
+            mov     eax, esi
+            sub     eax, ebx
+            test    eax, eax
+            jns     nxt
+            neg     eax             // EAX = dx = abs(X2-X1)
+
+ygreater:   mov     eax, edi
+            sub     eax, ecx
+            test    eax, eax
+            jns     nxt
+            neg     eax             // EDX = dy = abs(Y2-Y1)
+
+nxt:        xchg    ecx, eax        // EAX = Y1
+            shr     ecx, 10
+            inc     ecx             // ECX = Loop count (nSteps+1)
+
+            mov     esi, this
+            mov     esi, [esi]CWinGBitmap.m_rowLookup       // ESI = address of lookup table
+
+linelp:     mov     edx, eax
+            shr     edx, 10         // EDX = Ypos / 1024
+
+            mov     edi, dword ptr [esi + edx*4]    // Calc destination screen address
+
+            mov     edx, ebx
+            shr     edx, 10         // EDX = Xpos / 1024
+
+            add     edi, edx        // pDest = m_rowLookup[Ypos/1024]+(Xpos/1024)
+            mov     dl, byte ptr [LineCol]
+            mov     byte ptr [edi], dl      // Plot pixel in line
+    
+            add     ebx, Xinc       // X1 += Xinc
+            add     eax, Yinc       // Y1 += Yinc
+            loop    linelp
+
+lineExit:
+    }
+}
+
+void CWinGBitmap::SetFrameCallback(LPFRAMECALLBACK pfnFrameCallback, DWORD dwUser /*=0*/)
+{
+    m_dwUser = dwUser;
+    m_pfnFrameCallback = pfnFrameCallback;
+}
+
+void CWinGBitmap::ResetFrameCallback()
+{
+    m_pfnFrameCallback;
+}
+
+BOOL CWinGBitmap::InstallFrameHandler(UINT wFrameRate)
+{
+    TIMECAPS tc;
+    
+    if(timeGetDevCaps(&tc, sizeof(TIMECAPS)) != TIMERR_NOERROR)
+    return FALSE;
+
+    timeBeginPeriod(m_wTimerPeriod = min(max(tc.wPeriodMin, 1000/wFrameRate), tc.wPeriodMax));
+
+    return ((m_wTimerID = timeSetEvent(m_wTimerPeriod,
+                                   m_wTimerPeriod,
+                                  (LPTIMECALLBACK)&UpdateDisplay,
+                                   (DWORD)this,             
+                                   TIME_PERIODIC)) != 0);
+}
+
+void CWinGBitmap::RemoveFrameHandler()
+{
+    timeEndPeriod(m_wTimerPeriod);
+
+    timeKillEvent(m_wTimerID);
+}
+
+void CWinGBitmap::EnableRefresh()
+{
+    m_bRefresh = TRUE;
+}
+
+void CWinGBitmap::DisableRefresh()
+{
+    m_bRefresh = FALSE;
+}
+
+void PASCAL CWinGBitmap::UpdateDisplay(UINT /*wTimerID*/, UINT /*msg*/,
+                                   DWORD dwThis,  DWORD /*dw1*/, DWORD /*dw2*/)
+{
+    if (((CWinGBitmap*)dwThis)->m_pfnFrameCallback)
+        (*((CWinGBitmap*)dwThis)->m_pfnFrameCallback)(((CWinGBitmap*)dwThis)->m_dwUser);
+
+    if (((CWinGBitmap*)dwThis)->m_bRefresh)
+    {
+        CDC *hDC = ((CWinGBitmap*)dwThis)->m_pParent->GetDC();
+
+        if (((CWinGBitmap*)dwThis)->m_rctUpdateRect.left  ||
+            ((CWinGBitmap*)dwThis)->m_rctUpdateRect.right ||
+            ((CWinGBitmap*)dwThis)->m_rctUpdateRect.top   ||
+            ((CWinGBitmap*)dwThis)->m_rctUpdateRect.bottom )
+        {
+            WinGBitBlt(hDC->m_hDC, ((CWinGBitmap*)dwThis)->m_rctUpdateRect.left, 
+                                   ((CWinGBitmap*)dwThis)->m_rctUpdateRect.top, 
+                                   ((CWinGBitmap*)dwThis)->m_rctUpdateRect.right  - ((CWinGBitmap*)dwThis)->m_rctUpdateRect.left,
+                                   ((CWinGBitmap*)dwThis)->m_rctUpdateRect.bottom - ((CWinGBitmap*)dwThis)->m_rctUpdateRect.top,
+                                   ((CWinGBitmap*)dwThis)->m_hWinGDC, 
+                                   ((CWinGBitmap*)dwThis)->m_rctUpdateRect.left, 
+                                   ((CWinGBitmap*)dwThis)->m_rctUpdateRect.top);
+
+            // Reset the update rectangle
+            ((CWinGBitmap*)dwThis)->m_rctUpdateRect.left   =
+            ((CWinGBitmap*)dwThis)->m_rctUpdateRect.right  =
+            ((CWinGBitmap*)dwThis)->m_rctUpdateRect.top    =
+            ((CWinGBitmap*)dwThis)->m_rctUpdateRect.bottom = 0L;
+        }
+    }
+}
+
+void CWinGBitmap::ClearScreen(LONG lClearStyle /*= CLS_BLACKNESS*/, LONG lClearTime /*= 1L*/)
+{
+    if(CLS_BLACKNESS);
+    // Just do a bit blit
+    else
+    {
+    m_pfnOldFrameCallback = m_pfnFrameCallback;
+        m_bOldRefresh             = m_bRefresh;
+
+    m_bRefresh = FALSE; // Temporarily disable refresh
+
+        if (lClearStyle == CLS_DISSOLVE)
+    {
+        srand(0x0FAB); // Seed the random number generator
+
+        m_lClearFrames = (lClearTime * DEFAULT_FRAME_RATE);
+            m_lPixelsPerFrame = (m_nDIBWidth * m_nDIBHeight) / m_lClearFrames;
+    }
+
+        m_lClearStyle = lClearStyle;
+    m_dwUser = (DWORD)this;
+        m_pfnFrameCallback = &ClrScr;
+        m_bRefresh = TRUE;
+    }
+}
+
+void CWinGBitmap::ClrScr(DWORD dwThis)
+{
+    WORD multiplier = 1509;
+
+    if (((CWinGBitmap*)dwThis)->m_lClearStyle == CLS_DISSOLVE)
+    {
+    WORD nWidth, nHeight;
+    LONG nPixels, rowBytes, Orientation;
+
+    _asm
+    {
+        pushf
+        push    esi
+        push    edi
+
+        mov     esi, dwThis     // Set 'this' pointer
+        mov     eax, [esi]CWinGBitmap.m_lPixelsPerFrame // Pixels to output
+        mov     nPixels, eax
+        
+        mov     eax, [esi]CWinGBitmap.m_nDIBWidth
+        dec     ax
+        mov     nWidth, ax      // width = nDIBWidth - 1
+        mov     eax, [esi]CWinGBitmap.m_nDIBHeight
+        dec     ax
+        mov     nHeight, ax     // height = nDIBHeight -1
+
+        cld                     // Clear direction flag (for forward searches)
+        mov     eax, [esi]CWinGBitmap.m_Orientation
+        mov     Orientation, eax
+        or      eax, eax
+        js      topDown
+        std                     // Set the direction flag (for reverse searches)
+
+topDown: mov    eax, [esi]CWinGBitmap.m_rowBytes
+        dec     eax
+        mov     rowBytes, eax
+
+        mov         esi, [esi]CWinGBitmap.m_rowLookup           // Lookup screen address value
+
+dissolve: push  ecx
+        push    esi
+        call    rand
+        pop     esi
+        pop     ecx
+        
+        sub     edx, edx        // dx:ax == ax
+        div     nHeight         // dx = ypos % (nDIBHeight-1)
+
+        mov     edi, dword ptr [esi + edx*4]            // Calculate screen memory offset
+
+        push    ecx
+        push    esi
+        call    rand
+        pop     esi
+        pop     ecx
+
+        sub     edx, edx        // dx:ax == ax
+        div     nWidth          // dx = xpos % (nDIBWidth-1)
+         
+        add     edi, edx        // [EDI] -> Destination bitmap
+
+//            cmp     byte ptr [edi], 0
+//            jnz     byteFound
+
+// if pixel is already blank, we need to search for another non-blank pixel
+        sub     ax, ax
+        mov     ax, nHeight
+        mov     ecx, [esi + eax*4]  // Get address of last screen row
+        add     ecx, rowBytes       // add (rowBytes-1) to get end of screen address
+        sub     ecx, edi            // Get no of bytes till end of screen
+        jns     positive
+        neg     ecx
+positive: mov   ebx, edi
+        sub     al, al
+        repz    scasb               // Search for zero byte
+        jnz     byteFound
+
+        mov     ecx, edi
+        mov     edi, [esi]          // Try from start of screen memory
+        sub     ecx, ebx
+        repz    scasb
+        jcxz    endDisslve
+    
+byteFound: sub  edi, Orientation
+        mov     byte ptr [edi], 0
+        dec     nPixels
+        jnz     dissolve
+
+endDisslve: pop     edi
+        pop     esi
+        popf
+    }
+
+    if(--((CWinGBitmap*)dwThis)->m_lClearFrames == 0)
+    {
+        ((CWinGBitmap*)dwThis)->m_bRefresh = ((CWinGBitmap*)dwThis)->m_bOldRefresh;
+        ((CWinGBitmap*)dwThis)->m_pfnFrameCallback = ((CWinGBitmap*)dwThis)->m_pfnOldFrameCallback;
+    }
+    
+    ((CWinGBitmap*)dwThis)->m_rctUpdateRect.left   =
+    ((CWinGBitmap*)dwThis)->m_rctUpdateRect.top    = 0;
+    ((CWinGBitmap*)dwThis)->m_rctUpdateRect.right  = ((CWinGBitmap*)dwThis)->m_nDIBWidth-1;
+    ((CWinGBitmap*)dwThis)->m_rctUpdateRect.bottom = ((CWinGBitmap*)dwThis)->m_nDIBHeight-1;
+    }
+}
+  
+void CWinGBitmap::AddUpdateRect(LONG x1, LONG y1, LONG x2, LONG y2)
+{
+    if(x1 < m_rctUpdateRect.left)   m_rctUpdateRect.left   = x1;
+    if(x2 > m_rctUpdateRect.right)  m_rctUpdateRect.right  = x2;
+    if(y1 < m_rctUpdateRect.top)    m_rctUpdateRect.top    = y1;
+    if(y2 > m_rctUpdateRect.bottom) m_rctUpdateRect.bottom = y2;
+}

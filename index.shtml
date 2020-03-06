@@ -1,0 +1,25 @@
+<!--#set var="page" value="home" -->
+<html>
+<head>
+ <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+ <title>Anthony Miceli dot com</title>
+ <style type="text/css" media="all">@import "style.css";</style>
+ <link rel="stylesheet" type="text/css" href="style.css" />
+</head>
+<body>
+ <!--#include virtual="topnav.shtml" -->
+ <div id="content">
+  <div id="home_content">
+    <div id="home_col1">
+	  <p>Welcome.</p>
+      <p>On this page you will find all sorts of code I have written on various machines over the years, like the Commodore 64 (If I can salvage my old disks!), Commodore Amiga, MS DOS, MS Windows, and the web.</p>
+      <p>This also serves as an experiment in setting up my own Linux-based server on a low spec VPS.  This site is currently running on a dual core VPS with just 128MB of RAM.  Currently only approx 25MB of RAM is used on the server.</p>
+	  <p>Note that this site isn't supposed to look fancy, just be functional.  I'm not a graphic designer :)  I'll have a shot at improving it after I have finished adding all the content I want.</p>
+    </div>
+  </div>
+  <div id="home_col2">
+    <div id="content"><a href="http://au.linkedin.com/in/tonymiceli"><img src="http://www.linkedin.com/img/webpromo/btn_viewmy_160x33.png" width="160" height="33" border="0" alt="View Anthony Miceli's profile on LinkedIn"></a></div>
+  </div>
+ </div>
+</body>
+</html>

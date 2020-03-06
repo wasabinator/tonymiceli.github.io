@@ -1,0 +1,59 @@
+<!--#set var="page" value="code" -->
+<html>
+<head>
+ <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+ <title>Anthony Miceli dot com - Projects</title>
+ <style type="text/css" media="all">@import "style.css";</style>
+ <link rel="stylesheet" type="text/css" href="style.css" />
+</head>
+<body>
+ <!--#include virtual="topnav.shtml" -->
+ <div id="content">
+  <p><div align="center">
+  <p>On this page I will list some code I have written over the years.  There's plenty more where this came from so check back soon for more.</p>
+  <table id="code_toc">
+    <thead>
+      <tr><th>Title</th><th>Platform</th><th>Language</th></th>
+	</thead>
+	<tbody>
+	  <tr><td><a href="#arctool">ArcTool</a></td><td>Commodore Amiga</td><td>Motorolla 68000 assembler</td></tr>
+	  <tr><td><a href="#megaview">MegaView</a></td><td>Commodore Amiga</td><td>Motorolla 68000 assembler</td></tr>
+	  <tr><td><a href="#sinus_x86">Sinus Scroller</a></td><td>IBM PC 286+, VGA</td><td>Intel 80286 assembler</td></tr>
+      <tr><td><a href="#template">Template classes</a></td><td>Generic</td><td>C++</td></tr>
+      <tr><td><a href="#wing">WinG Graphics Class</a></td><td>Windows 32-bit</td><td>Visual C++ 2.0/32-bit Intel assembler</td></tr>
+      <tr><td><a href="#sinus_java">Java Sinus Scroller</a></td><td>Java</td><td>Symantec Cafe/Java</td></tr>
+    </tbody>	  
+  </table>
+  </div></p>
+
+  <p><table id="code_table">
+  <tr><td id="col1"><a href="code/amiga/arctool/arctool_lg.gif"><img src="code/amiga/arctool/arctool_sm.gif" alt="Arctool v2"/></a></td>
+      <td id="col2"><p><a name="arctool"></a><h1>ArcTool</h1></p>
+	    <p>This was my largest program for the Amiga.  It was written in straight 68000 assembly language and was basically a graphical frontend to archivers that hid the user from all those cryptic commandline switches.  It featured a simple scripting mechanism so that support could be added for newer achivers without the need for a new release.  Since it was written for Workbench 1.3, most of the GUI components had to be written from scratch.</p>
+	    <p>The picture to the left is of an early prototype of version 2 (<a href="code/amiga/arctool/arctool_lg.gif">click</a> to view larger version).</p>
+        <p><a href="code/amiga/arctool/atoolv15.asm.txt">See the Source code</a>.  Unfortunately I don't have the readme available.</p></tr>
+		
+  <tr><td colspan="2" id="col2"><p><a name="megaview"></a><h1>MegaView</h1></p>
+        <p>This program became quite popular with the local bulletin board community.  When MegaView was run, it would first patch itself into the operating system and then sleep.  When a new file began to download, it would be awoken via a special task signal.  What it would then do is intercept the downloading file and display it to the user (if it was a recognisable type).  This would allow the user to determine if the file was what they were looking for and cancel the download if necessary before having to wait for the entire transfer to complete.  Since 2400bps modems were the norm back then, this could actually save a good deal of time which could otherwise be spent on more useful downloads.</p>
+        <p>The application received a number of mentions in Amiga publications such as "Australian Commodore and Amiga Review".  <!--A full release including docs can be obtained in the <A HREF="software.html#megaview">software</A> area.-->  This program was also coded in 68000 assembly language and since it was one of my first real efforts with 68000, some areas could have been improved.</p>
+		<p><A HREF="code/amiga/megaview/mview24b.asm.txt">See the code</a>, and <A HREF="code/amiga/megaview/mview24b.txt">See the readme</a>.</p></tr>
+
+  <tr><td id="col1"><img src="code/pc/sinus/sinus.gif" alt="Sinus Picture"><small>Odd name for a BBS!</small></td>
+      <td id="col2"><p><a name="sinus_x86"></a><h1>Sinus Scroller</h1></p>
+	    <p>I originally wrote this little scroller at the request of a bulletin board operator.  It could be neatened up by recoding to take advantage of 32-bit instructions/registers, as I wanted to target the 286 (which was still very popular at the time).</p>
+        <p><a href="code/pc/sinus/sinus.asm.txt">See the code</a>.</p></tr>
+
+  <tr><td colspan="2" id="col2"><p><a name="template"></a><h1>Template Classes</h1></p>
+        <p>Here are a couple of C++ template classes which I wrote using Borland C++ 4.0.  One is a <A HREF="code/generic/template/list.h.txt">linked list class</A> and the other is a <A HREF="code/generic/template/dictnry.h.txt">data dictionary class</A>.</p></tr>
+
+  <tr><td colspan="2" id="col2"><p><a name="wing"></a><h1>WinG Graphics Class</h1></p>
+        <p>This is a C++ class I wrote that provides a number of very highly optimised graphics primitives to be used under the Window WinG library (their precursor to DirectX).  I still have the original GameSDK somewhere.  The class will handle operations such as Blts and Line Drawing and shows how to use inline assembler in a C++ class and to minimise the overhead in making function calls.  <a href="code/pc/wing/gbitmap.h.txt">See the header</a>, <a href="code/pc/wing/gbitmap.cpp.txt">See the source</a>.</p></tr>
+
+  <tr><td colspan="2" id="col2"><p><a name="sinus_java"></a><h1>Java Sinus Scroller</h1></p>
+        <p>Here's another sinus scroller, which I wrote in Java this time.  <a href="code/java/sinus/sinus.java.txt">See the code</a>, <a href="code/java/sinus/readme.html">Read the original documentation</a>, or <a href="code/java/sinus/demo.html">See it running</a>.</p></tr>
+		
+  </table></p>
+ </div>
+
+</body>
+</html>

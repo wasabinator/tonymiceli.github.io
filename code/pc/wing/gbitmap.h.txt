@@ -1,0 +1,111 @@
+// GBitmap - Low level WinG primitives.
+// Copyright (c) 1995 Tony Miceli
+
+#ifndef _GBITMAP_H_
+#define _GBITMAP_H_
+
+#include <mmsystem.h>
+
+// Helper macro for longword alignments
+#define LONG_ALIGN(l) __asm     {           \
+			  add l, 3          \
+			  and l, 0xfffffffc \
+}
+
+// Type definition for frame callback function
+typedef void (CALLBACK FRAMECALLBACK)(DWORD dwUser);
+typedef FRAMECALLBACK *LPFRAMECALLBACK;
+
+// Define the different BitBlt raster operations.  These are #defines to keep the asm 
+// routines at top speed
+#define BLT_SRCCOPY     0
+#define BLT_TRANSCOPY   1
+#define BLT_BLACKNESS   2
+#define BLT_WHITENESS   3
+
+// Screen clearing types
+#define CLS_BLACKNESS   0
+#define CLS_DISSOLVE    1
+
+// Default frame rate
+#define DEFAULT_FRAME_RATE      10
+
+class CWinGBitmap
+{
+    HBITMAP   m_ghBitmapMonochrome;
+    HDC       m_hWinGDC;
+
+    LONG      m_nDIBWidth, m_nDIBHeight;
+    
+    LONG      m_Orientation;
+    void far *m_hpSurfaceBits;
+    LONG     *m_rowLookup,
+	      m_rowBytes,
+	      m_rowAdd;
+    LPFRAMECALLBACK m_pfnFrameCallback, m_pfnOldFrameCallback;
+    BOOL      m_bRefresh, m_bOldRefresh;
+    CWnd     *m_pParent;
+    UINT      m_wTimerID, m_wTimerPeriod;
+    DWORD     m_dwUser;
+    LONG      m_lClearStyle;
+    LONG      m_lPixelsPerFrame;
+    LONG      m_lClearFrames;
+
+    RECT      m_rctUpdateRect;
+
+    void CreateWinGDC(WORD nWidth, WORD nHeight);
+    void DestroyWinGDC();
+
+    BOOL InstallFrameHandler(UINT wFrameRate);
+    void RemoveFrameHandler();
+    static TIMECALLBACK UpdateDisplay;
+    static FRAMECALLBACK ClrScr;
+
+public:
+    CWinGBitmap(CWnd *pParent, WORD nWidth=0, WORD nHeight=0);
+    ~CWinGBitmap();
+
+    HDC  GetDC() 
+    { 
+	return m_hWinGDC; 
+    }
+
+    LONG GetWidth()
+    {
+	return m_nDIBWidth;
+    }
+
+    LONG GetHeight()
+    {
+	return m_nDIBHeight;
+    }
+
+    HDC  Create(WORD nWidth, WORD nHeight);
+	
+    void Destroy();
+
+    BYTE CWinGBitmap::GetPixel(LONG Xpos, LONG Ypos);
+
+    void SetPixel(LONG Xpos, LONG Ypos, BYTE PixCol);
+
+    void BitBlt(LONG nXDest, LONG nYDest, 
+		LPVOID pSrc, ULONG nSrcWidth, ULONG nSrcHeight,
+		LONG dwRop);
+
+    void FillRect(LONG nXpos, LONG nYpos, LONG nWidth, LONG nHeight, BYTE PixCol);
+
+    void DrawLine(LONG X1, LONG Y1, LONG X2, LONG Y2, BYTE LineCol);
+
+    void SetFrameCallback(LPFRAMECALLBACK pfnFrameCallback, DWORD dwUser);
+    void ResetFrameCallback();
+
+    void EnableRefresh();
+
+    void DisableRefresh();
+
+    void AddUpdateRect(LONG x1, LONG y1, LONG x2, LONG y2);
+
+    void ClearScreen(LONG lClearStyle = CLS_BLACKNESS, LONG lClearTime = 1L);
+};
+
+#endif // _GBITMAP_H_

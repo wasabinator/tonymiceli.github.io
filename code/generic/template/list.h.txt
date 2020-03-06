@@ -1,0 +1,470 @@
+#if !defined(__ajm_list_h)
+#define __ajm_list_h
+
+/*
+	 Copyright © 1994 Tony Miceli. All Rights Reserved.
+
+	 FILE:         list.h
+	 AUTHOR:       Tony Miceli
+
+
+	 OVERVIEW
+	 ========
+	 Class template definition for doubly-linked lists.  To use,
+	 just specify a class containing the data structure for the
+	 node structure in the list's definition.  The nested class
+	 Node automatically extends this by adding list pointers
+	 to the data structure for linkage.
+
+	 MODIFICATION HISTORY
+	 ====================
+	  3/10/1994     Class written.
+	  8/10/1994		 Rewritten as a template class.  Several subtle
+						 changes to how some mthods operate.
+	  9/10/1994		 Used memcpy rather than memberwise structure
+						 duplication as this was causing the destructor
+						 to be called (prehaps because a temporary was
+						 being constructed for operator=).
+	 13/10/1994     Changed operation so that it now uses dummy head
+						 and tail nodes.  This, in most cases, leads to
+						 improved simplicity and efficiency.
+
+	 CLASS LIST: SPECIFICATION
+	 =========================
+	 Base class for doubly-linked list.
+
+	 METHODS:
+	 ========
+
+	 int isEmpty() - Returns 1 if empty, otherwise 0.
+	 T *start()    - Moves the to the head of the list and returns a
+						  pointer to the head node.
+	 T *end()      - Moves to the tail of the list.
+	 T *next()     - Moves to the next node in the list.
+	 T *prev()     - Moves to the previous node in the list.
+	 T *getHead()  - Returns the head of the list.
+	 T *getCurrent()
+						- Returns the current node position.
+	 T *getTail()  - Returns the tail of the list.
+	 T *append( T &new_node )
+						- Inserts new_node immediately after the current
+						  node and points current to the new node.
+	 T *insert( T &new_node )
+						- Inserts new_node immediately before the current
+						  node and points current to the new node.
+	 T *addHead( T &new_node )
+						- Adds new_node to the head of the list and sets
+						  current node.
+	 T *addTail( T &new_node )
+						- Adds new_node to the tail of the list and sets
+						  current node.
+	 int dispose( void )
+						- Removes current from the list and points current
+						  to node following the deleted node.
+	 T *remove( void )
+						- Removes current from the list and points current
+						  to node following the deleted node.  Does not
+						  deallocate T and returns a pointer to it (or NULL).
+	 int disposeHead( void )
+						- Removes the head node from the list and points
+						  current to the new head.
+	 T *removeHead( void )
+						- Removes the head node from the list and points
+						  current to the new head.  Does not deallocate
+						  T and returns a pointer to it (or NULL on error).
+	 int disposeTail( void )
+						- Removes the tail node from the list and points
+						  current to the new tail.
+	 T *removeTail( void )
+						- Removes the tail node from the list and points
+						  current to the new tail.  Does not deallocate
+						  T and returns a pointer to it (or NULL on error).
+	 T *operator++( void )
+						- Functionally identical to next().
+	 T *operator++( int )
+						- Returns current Node and moves to next node.
+	 T *operator--( void )
+						- Functionally identical to prev();
+	 T *operator--( int )
+						- Returns current node and moves to previous node.
+	 void free()   - Deallocates storage space occupied by list.
+						  This does not include the physical node storage
+						  areas -- this is the function of the subclasses'
+						  overridden remove function.
+*/
+
+// Define this for self-debugging mode:
+//#define LIST_DEBUG
+
+// CLASS NODE
+// ==========
+// Base class for node structure.
+
+template <class T>
+class Node
+{
+	Node *succ, // Pointer to successor node in linked list
+		  *pred; // Pointer to successor node in linked list
+
+	T *data;    // User-defined list component
+	friend class List<T>;
+
+public:
+
+	Node( void ) {
+		succ = pred = NULL;
+		data = NULL;
+	}
+};
+
+template <class T> class List
+{
+	Node<T> head,    // Head dummy node of the list
+			  tail,    // Tail dummy node of the list
+			 *current; // Pointer to current node
+
+public:
+
+	List( void );
+	~List( void );
+	int isEmpty( void );
+	void freeList( void );
+	T *start();
+	T *end();
+	T *next();
+	T *prev();
+	T *getHead();
+	T *getCurrent();
+	T *getTail();
+	T *append( const T &new_node );
+	T *insert( const T &new_node );
+	T *addHead( const T &new_node );
+	T *addTail( const T &new_node );
+	int dispose( void );
+	T *remove( void );
+	int disposeHead( void );
+	T *removeHead( void );
+	int disposeTail( void );
+	T *removeTail( void );
+	T *operator++( void );
+	T *operator++( int );
+	T *operator--( void );
+	T *operator--( int );
+#ifdef LIST_DEBUG
+	void List::test_list_linkage();
+#endif
+};
+
+/////////////////////////////////////////////////////////////////
+//																					//
+//                  CLASS LIST IMPLEMENTATION                  //
+//																					//
+/////////////////////////////////////////////////////////////////
+
+#ifndef NULL
+	#define NULL 0L
+#endif
+
+template<class T>
+inline List<T>::List( void ) {
+// Initialise list pointers
+	head.succ = &tail;
+	tail.pred = current = &head;
+}
+
+template<class T>
+inline List<T>::~List( void ) {
+	freeList();   // Deallocate list storage
+}
+
+template<class T>
+inline int List<T>::isEmpty( void ) {
+	return ( head.succ == &tail );
+}
+
+template<class T>
+void List<T>::freeList( void )
+{
+	while( !isEmpty() ) 
+		disposeHead();
+}
+
+template<class T>
+T *List<T>::start( void )
+{
+	if( isEmpty() )
+		current = &head;
+	else
+		current = head.succ;
+
+	return current->data; // If current == &head, returns NULL
+}
+
+template<class T>
+T *List<T>::end( void )
+{
+	if( isEmpty() )
+		current = &tail;
+	else
+		current = tail.pred;
+
+	return current->data; // If current == &tail, returns NULL
+}
+
+template<class T>
+T *List<T>::next( void )
+
+// Returns NULL if passed end of list.
+{
+	if( current != &tail )
+		current = current->succ;
+
+	return current->data; // Returning tail.data will yield NULL
+}
+
+template<class T>
+T *List<T>::prev( void )
+
+// Returns NULL is passed the head of list.
+{
+	if( current != &head ) 
+		current = current->pred;
+
+	return current->data; // Returning head->data will yield NULL
+}
+
+template<class T>
+inline T *List<T>::getHead( void ) {
+	return head.succ->data; // If list empty, returns tail.data (NULL)
+}
+
+template<class T>
+inline T *List<T>::getCurrent( void ) {
+	return current->data; // If current = head or tail, returns NULL
+}
+
+template<class T>
+inline T *List<T>::getTail( void ) {
+	return tail.pred->data; // If list empty, returns head.data (NULL)
+}
+
+template<class T>
+T *List<T>::append( const T &new_node )
+
+// Inserts node after current node
+{
+	Node<T> *newNode;
+	if((newNode = new Node<T>) == NULL)
+		return NULL;           // Error! Could not allocate node.
+
+	if((newNode->data = new T) == NULL) {
+		delete newNode;
+		return NULL;
+	}
+
+	if( current == &tail )
+		current = tail.pred;
+
+	*newNode->data = new_node; //caused destructor to be called!! Why ?!
+//	memcpy(newNode->data, &new_node, sizeof(T)); // Copy data area
+
+	newNode->pred = current;       // Setup new node's linkage
+	newNode->succ = current->succ;
+
+	current->succ = newNode;       // Set predecessor's linkage
+
+	Node<T> *next = newNode->succ;
+	next->pred    = newNode; // Set successor's linkage
+
+#ifdef LIST_DEBUG
+	test_list_linkage();
+#endif
+	current = newNode;
+
+	return newNode->data; // Return true result
+}
+
+template<class T>
+inline T *List<T>::insert( const T &new_node ) { // Inserts before current
+	prev(); // Go to previous node, or tail if no previous
+	return append( new_node );
+}
+
+template<class T>
+inline T *List<T>::addHead( const T &new_node ) {
+	current = &head;
+	return append( new_node );
+}
+
+template<class T>
+inline T *List<T>::addTail( const T &new_node ) {
+	current = tail.pred;
+	return append( new_node );
+}
+
+#pragma argsused
+template<class T>
+T* List<T>::remove( void )
+{
+	if( isEmpty() || current == &head || current == &tail )
+		return NULL;  // Error! Nothing to delete
+
+	Node<T> *old_node = current,
+			  *pred     = current->pred,
+			  *succ     = current->succ;
+
+	pred->succ = succ; // Set linkage of parent
+	succ->pred = pred; // and child nodes
+
+	current = succ;
+
+#ifdef LIST_DEBUG
+	test_list_linkage();
+#endif
+
+	T *old_data = old_node->data;
+	delete old_node;
+
+	return old_data;
+}
+
+template<class T>
+int List<T>::dispose( void )
+{
+	T *old_data;
+	if( (old_data = remove() ) != NULL ) {
+		delete old_data;
+		return 1; // TRUE
+	}
+	else
+		return 0; // FALSE
+}
+
+template<class T>
+inline T *List<T>::removeHead( void ) {
+	current = head.succ;
+	return remove();
+}
+
+template<class T>
+inline int List<T>::disposeHead( void ) {
+	current = head.succ;
+	return dispose();
+}
+
+template<class T>
+inline T *List<T>::removeTail( void ) {
+	current = tail.pred;
+	return remove();
+}
+
+template<class T>
+inline int List<T>::disposeTail( void ) {
+	current = tail.pred;
+	return dispose();
+}
+
+template<class T>
+inline T *List<T>::operator++( void ) { // ++a
+	return next();
+}
+
+template<class T>
+inline T *List<T>::operator++( int ) {  // a++
+	Node<T> *curr = current;
+
+	next();
+	return curr->data; // If curr == &tail, returns NULL
+}
+
+template<class T>
+inline T *List<T>::operator--( void ) { // --a
+	return prev();
+}
+
+template<class T>
+T *List<T>::operator--( int ) { // a--
+	Node<T> *curr = current;
+
+	prev();
+	return curr->data; // If curr == &head, returns NULL
+}
+
+#ifdef LIST_DEBUG
+template<class T>
+void List<T>::test_list_linkage()
+{
+	Node<T> *nextNode;
+	char ch;
+
+	if( !isEmpty() ) {
+	  nextNode = head.succ;
+	  if( nextNode->pred != &head) {
+#ifdef _Windows
+		  ::MessageBox(0, "First node's pred pointer not NULL!",
+							"LIST.CPP linkage violation",
+							MB_ICONASTERISK|MB_OK);
+#else
+		  printf("Node => %8lx\n", nextNode);
+		  printf("LIST.CPP linkage violation - first node's pred pointer not NULL!\nPress enter...\n");
+		  scanf("%c", &ch);
+#endif
+		  // Try to fix problem:
+		  nextNode->pred = NULL;
+
+		  return;
+	  }
+
+	  while( nextNode != &tail ) {
+
+		  if( nextNode->succ == nextNode ) {
+#ifdef _Windows
+			  ::MessageBox(0, "Infinite list detected!",
+								"LIST.CPP linkage violation",
+								MB_ICONASTERISK|MB_OK);
+#else
+			  printf("LIST.CPP linkage violation - Infinite list detected!\nPress enter...\n");
+			  scanf("%c", &ch);
+#endif
+				 // Try to fix problem:
+				 tail.pred = nextNode;
+				 nextNode->succ = &tail;
+
+				 return;
+			 }
+
+		  if( nextNode->succ == &tail ) {
+			 if ( tail.pred != nextNode ) {
+#ifdef _Windows
+				 ::MessageBox(0, "Tail pointer not equal to end node",
+									"LIST.CPP linkage violation",
+									MB_ICONASTERISK|MB_OK);
+#else
+				 printf("LIST.CPP linkage violation - Tail pointer not equal to end node!\nPress enter...\n");
+				 scanf("%c", &ch);
+#endif
+				 // Try to fix problem:
+				 tail.pred = nextNode;
+
+				 return;
+			 }
+		  }
+		  else if( nextNode->succ->pred != nextNode ) {
+#ifdef _Windows
+				 ::MessageBox(0, "Invalid node linkage detected!",
+									"LIST.CPP linkage violation",
+									MB_ICONASTERISK|MB_OK);
+#else
+			 printf("LIST.CPP linkage violation - Invalid node links detected!\nPress enter...\n");
+			 scanf("%c", &ch);
+#endif
+				 return;
+		  }
+		  nextNode = nextNode->succ;
+	  }
+	}
+}
+#endif // LIST_DEBUG
+
+#endif // __ajm_list_h
+

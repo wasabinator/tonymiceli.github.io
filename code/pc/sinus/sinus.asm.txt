@@ -1,0 +1,697 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                                                                      ;;
+;;              SINUS TEXT SCROLLER + PALLETE EFFECTS                   ;;
+;;                                                                      ;;
+;;                      Coded by: Tony Miceli                           ;;
+;;                             June '95                                 ;;
+;;                                                                      ;;
+;;              HARDWARE REQUIRED:      IBM PC-AT + VGA                 ;;
+;;                                                                      ;;
+;;     You are free to do what you want with this code as long as       ;;
+;;   you don't act like a lamer and pretend that you wrote any of it!   ;;
+;;                                                                      ;;
+;; 	   NOTE: Assemble with TASM, and link with TLink /Tdc		;;
+;;									;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+.286
+.model small
+
+SCREEN_SIZE     equ     2000            ;1024 words to copy
+
+INPUT_STATUS_1	equ	03dah		;VGA input status register 1
+CRTC_INDEX	equ	03d4h		;VGA CRT contrller index register
+
+cseg		segment
+		assume	cs:cseg, ds:cseg, es:cseg, ss:cseg
+		org	100h
+
+main		proc	
+
+start:          mov     ax, 1a00h       ;Test if VGA card attached
+                int     10h
+                cmp     al, 1ah
+                jz      okVGA
+
+                mov     dx, offset needVGA
+                mov     ah, 09h
+                int     21h             ;Display error
+		jmp	exit
+
+;;Set up a stack and resize memory allocated to program
+
+okVGA:          mov     bx, offset last_byte
+		mov	cl, 4
+		shr	bx, cl
+		add	bx, 17
+		mov	ah, 4ah
+		int	21h		;Resize memory block
+		shl	bx, cl
+		dec	bx
+		mov	sp, bx
+
+                mov     ah, 0fh
+                int     10h
+                mov     vidmode, al     ;Save current mode
+                mov     vidpage, bh     ;Save current page
+                xor     bl, bl
+                push    bx
+ 
+                mov     ah, 03h
+                int     10h             ;Get cursor pos
+                mov     cursorpos, dx
+  
+                pop     bx
+                mov     cl, 03h         ;Translate page to memory offset
+                shl     bh, cl
+                mov     pageaddr, bx
+                mov     si, bx
+
+;; Save the text mode screen
+
+                push	ds
+		push	ds
+                pop     es		;es points to destination segment
+ 
+                mov     ax, 0b800h      ;Point to colour text area
+                mov     ds, ax
+ 
+                cld                     ;Clear the direction flag
+                lea     di, textsave    ;Dest. of copy (ES:DI)
+                mov     cx, SCREEN_SIZE ;Number of words to copy
+                rep     movsw           ;Copy the screen
+
+		pop	ds
+
+;;Get address of ROM 8 x 16 character set
+
+		mov	ax, 1130h
+		mov	bh, 06h		;Select 8x16 set
+		int	10h
+		inc	dl
+		mov	char_rows, dl
+		mov	char_seg, es
+		mov	char_off, bp
+
+;; Set video mode 320x240x256
+
+		call	SetModeX
+
+;;Setup our palette
+
+                mov     bl, 16
+                mov     cx, PALETTE_LENGTH
+                mov     si, offset Palette
+                call    setcols
+
+;;Draw the two colour bars (on each page)
+
+lp1:		xor	ax, ax	;XPos
+		mov	dl, 16
+lp2:            mov     bx, 44+25  ;row 45 (counting from zero, don't forget)
+		push	ax
+		push	dx
+		call	setpix
+		pop	dx
+		pop	ax
+		test	al, 1
+		jz	lp3
+		inc	dl
+		cmp	dl, 47
+		jle	lp3
+		mov	dl, 16
+lp3:		mov	bx, 319
+		sub	bx, ax
+		push	ax
+		mov	ax, bx
+                mov     bx, 189-25 ;row 190
+		push	dx
+		call	setpix
+		pop	dx
+		pop	ax
+		inc	ax
+		cmp	ax, 320
+		jnz	lp2
+
+		call	pageflip
+		cmp	pageno, 2
+		jz	lp1
+
+;; Main animation loop
+
+mainloop:	call	scroll
+
+		xor	ax, ax			;Xpos = 0
+                mov     bx, 109                 ;Ypos = 110
+                mov     si, offset message      ;Ptr to c-string
+		add	si, Message_Index
+		mov	dl, 16			;Colour for 1st row
+                mov     cl, 1                   ;Enable sinus effect
+                call    strout                  ;Output the credits
+
+                call    animate			;Do palette animation
+
+                mov     bl, 16
+                mov     cx, BAR_PALETTE_LEN
+                mov     si, offset Palette
+                call    setcols
+
+		call	pageflip
+		
+;;Check if a key has been pressed
+		
+		mov	ah, 01h
+		int	16h		;Report whether keystroke ready
+		jz	mainloop
+		xor	ah, ah		;Remove key from input buffer
+		int	16h
+
+;;Restore video state
+
+;; Restore the text mode screen
+
+                xor     ah, ah
+                mov     al, vidmode
+                int     10h             ;Restore video mode
+ 
+                mov     ah, 04h
+                mov     al, vidpage
+                int     10h             ;Restore video page
+ 
+                mov     ax, 0b800h
+                mov     es, ax          ;Point ES to colour text area
+ 
+                lea     si, textsave    ;Point to screen save area
+                mov     di, pageaddr
+                mov     cx, SCREEN_SIZE ;Number of words to copy
+                rep     movsw           ;Restore the screen
+ 
+                mov     ah, 02h
+                mov     bh, vidpage
+                mov     dx, cursorpos
+                int     10h             ;Restore cursor pos
+
+exit:           mov     ax, 4c00h
+		int	21h		;Terminate with zero return code
+
+main		endp                
+
+;; Page flipping procedure
+
+pageflip	proc
+
+		mov	si, pageno	;Get current page number
+		mov	bl, 0dh		;Select register for page LSB
+		mov	bh, byte ptr pages[si] ;Get start address of current 
+					       ;page (low byte)
+		mov	cl, 0ch		;Select register for page LSB
+		mov	ch, byte ptr pages+1[si] ;Now get the high byte
+		xor	si, 2
+		mov	pageno, si	;Toggle page count
+		
+		mov	dx, INPUT_STATUS_1	;Load DX with input status reg1
+waitDE:		in	al, dx		;Read register contents
+		test	al, 01h
+		jnz	waitDE		;Wait for display enable
+
+;;flip display page
+
+		mov	dx, CRTC_INDEX
+		mov	ax, bx
+		out	dx, ax		;Set start address (low byte)
+		mov	ax, cx
+		out	dx, ax		;Set start address (high byte)		
+		
+		mov	dx, INPUT_STATUS_1	;Load DX with input status reg1
+waitVS:		in	al, dx		;Test for vertical sync signal
+		test	al, 08h
+		jz	waitVS
+		ret
+
+		endp
+
+;; Point plotting routine. Always acts on the hidden page.
+;;
+;;	AX = XPos
+;;	BX = YPos
+;;	DL = Pixel Colour
+;;
+;; OUTPUT:
+;;	Registers AX, BX, CX, ES scratched
+
+setpix		proc
+
+		cmp	pageno, 2 ;Determine the hidden page
+		jnz	noadd
+		add	bx, 240	;Index to screen 2
+noadd:		shl	bx, 1	;Ypos * 2 = index to table
+		mov	bx, rowoffsets[bx]
+		mov	cl, al	;Copy for later 
+		shr	ax, 2	;X/4 = offset of pixel in scan line
+		add	bx, ax	;add x offset
+		mov	ax, SCREEN_SEG
+		mov	es, ax
+
+		and	cl, 011b	;CL = pixel's plane
+		mov	ax, 0100h + MAP_MASK	;AL = index of SC of map mask
+		shl	ah, cl		;Set only the bit for the pixel's plane
+		mov	cx, dx		;Copy the pixel colour
+		mov	dx, SC_INDEX
+		out	dx, ax		;Enable only pixel's plane
+		mov	es:[bx], cl	;Store the pixel
+		mov	dx, cx		;For convenience, restore pixel col reg
+		ret
+
+		endp
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;									;;
+;;			VGA VIDEO DAC SUBSYSTEM				;;
+;;									;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+PALETTE_MASK    equ     03c6h   ;Mask for index register
+READ_INDEX      equ     03c7h   ;Index of palette entry to read
+WRITE_INDEX     equ     03c8h   ;Index of palette entry to write
+DATA_REGISTER   equ     03c9h   ;RGB data port
+
+;;
+;; FUNCTION: setcols
+;;
+;; DESCRIPTION:
+;; Sets entries in the VGA Video DAC table
+;;
+;; This is my high-speed alternative to BIOS function 12h
+;;
+;; INPUTS:
+;;	BL = First register to update
+;;	CX = Number of registers to update
+;;	[DS:SI]->Table of RGB colour values
+;;
+
+setcols		proc
+		cld
+                mov     dx, PALETTE_MASK
+                mov     al, 0ffh
+                out     dx, al          ;Set the palette mask register
+                mov     dx, WRITE_INDEX
+		mov	al, bl
+                out     dx, al          ;Select colour index (auto increments 
+                                        ;after each 3 out's
+                inc     dx              ;Point to data register
+col_loop:       lodsb                   ;Get Green value
+                out     dx, al          ;Set Green value
+                lodsb                   ;Get Blue value
+                out     dx, al          ;Set Blue value
+                lodsb                   ;Get Red value
+                out     dx, al          ;Set Red value
+		loop	col_loop
+		ret
+
+		endp
+
+;animate
+;
+; Animates the palette
+;
+
+animate		proc
+		xor	si, si
+		mov	cx, BAR_PALETTE_LEN-1
+
+		mov	ax, word ptr Palette[si]
+		mov	bl, byte ptr Palette+2[si]
+
+anim_lp:	xchg	ax, word ptr Palette+3[si]
+		xchg	bl, byte ptr Palette+5[si]
+		
+		add	si, 3
+		loop	anim_lp
+
+		mov	word ptr [Palette], ax
+		mov	byte ptr [Palette+2], bl 
+
+		ret
+
+		endp
+
+;chout
+;
+; Text output routine
+; NB. Takes into account "Char_Offset" & "Char_Width" globals for the 
+;     scrolling code.  If you don't need scrolling, then alter the code
+;     that refers to these.
+;
+; INPUTS:
+;	AX = XPos
+;	BX = YPos
+;       CX = ASCII code
+;	DL = start colour for 1st row
+;       BP = Index to Sine Table
+;
+
+chout           proc
+                les     si, dword ptr [char_set] ;Get location of character set
+		shl	cx, 4		;CX * 16 = index to char
+                add     si, cx
+                mov     di, ax          ;Temporary copy of column
+
+		xor	dh, dh		;Reset row counter
+ch_loop:        xor	ch, ch		;Reset column counter
+		mov     cl, es:[si]     ;Get next byte
+		inc	si		;Point to next byte
+		cmp	Char_Offset, 0 ;Pixel scroll the char?
+		jz	ch_loop2
+		push	ax		;Need to shift char to left a bit
+		mov	al, cl
+		mov	cl, Scroll_Offset
+		shl	al, cl
+		mov	cl, al
+		pop	ax
+ch_loop2:       push    dx
+                shl     cl, 1		;Test next bit
+                jc      bit_set
+                xor     dl, dl
+bit_set:        push    ax
+                push    bx
+		push	cx
+		push	es
+                add     bx, [bp]
+                add     bp, 2
+                call    setpix
+                push    bp
+                mov	bp, sp
+                mov     ax, [bp+6+2]
+                mov     bx, [bp+4+2]
+                mov     cx, [bp+2+2]
+                mov     es, [bp+0+2]
+                pop     bp
+		inc	ax
+                add     bx, [bp]
+                add     bp, 2
+		call	setpix
+		pop	es
+		pop	cx
+                pop     bx
+                pop     ax
+                pop     dx
+                inc     ch              ;Increment column
+		add	ax, 2
+                cmp     ch, Char_Width
+                jnz     ch_loop2
+		sub	bp, Sinus_Delta	;Move bp back to start of sine
+                mov    	ax, di          ;Reset column
+                inc     dh              ;Increment row counter
+		inc	bx		;Increment screen row
+		inc	dl		;Colour for next row
+                cmp     dh, 16
+                jnz     ch_loop
+		add	bp, Sinus_Delta	;Advance to next portion of sine table
+                ret
+
+                endp
+
+;strout
+;
+; Outputs a string of characters (null terminated)
+;
+; INPUTS:
+;	AX = XPos
+;	BX = YPos
+;       CL = 0 for no sinus effects
+;          = 1 for sinus effects
+;	DL = Colour
+;	DS:SI->Character string
+
+strout		proc
+                mov     sinus, cl
+                mov     bp, offset Sine_Table
+str_lp:         xor     ch, ch
+                mov     cl, [si]
+		or	cl, cl
+		jnz	next_char
+		mov	si, offset message	;Scrolly-specific code
+
+next_char:	push	ax
+		push	bx
+		push	dx
+		push	si
+                cmp     sinus, 1
+		jz	do_char
+                mov     bp, offset No_Sinus
+do_char:        call    chout
+		pop	si
+		inc	si
+		pop	dx
+		pop	bx
+		pop	ax
+		mov	cl, Char_Width
+		xor	ch, ch
+		shl	cx, 1
+		add	ax, cx	;Move to next character x-position
+		
+		cmp	ax, 320-16
+                jl      do_char1
+		mov	cx, 320
+		sub	cx, ax
+		shl	cl, 1
+		mov	Sinus_Delta, cx
+		shr	cl, 1
+		shr	cl, 1
+		mov	Char_Width, cl
+                jmp     do_char2
+
+do_char1:       mov     Char_Offset, 0 ;Remove initial scroll-offset effects
+		mov	Char_Width, 8  ;For following characters
+		mov	Sinus_Delta, 32
+
+do_char2:	cmp	ax, 320
+                jl      str_lp
+		ret
+
+		endp
+
+;scroll
+;
+
+scroll		proc
+		mov	al, Scroll_Offset
+		inc	al
+		cmp	al, 8
+		jl	scroll_2
+		xor	al, al
+
+		mov	bx, Message_Index ;Increment text index
+		inc	bx
+		cmp	bx, MESSAGE_LENGTH-1
+		jl	scroll_1
+		xor	bx, bx
+scroll_1:	mov	Message_Index, bx
+
+scroll_2:	mov	Scroll_Offset, al
+		mov	Char_Offset, al
+		mov	bl, 8
+		sub	bl, al
+		mov	Char_Width, bl
+		shl	bl, 1
+		shl	bl, 1
+		xor	bh, bh
+		mov	Sinus_Delta, bx
+		ret
+		endp
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;									;;
+;;		     VGA MODE-X MODE SET ROUTINE			;;
+;;	  Adapted from code originally written by John Bridges 		;;
+;;			   and Michael Abrash				;;
+;;									;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+SetModeX	proc
+		mov	ax, 0013h
+		int	10h		;Set 320x200x256 mode
+
+		mov	dx, SC_INDEX
+		mov	ax, 0604h
+		out	dx, ax		;Disable chain4 mode
+		mov	ax, 0100h
+		out	dx, ax		;Synchronous reset while switching clocks
+
+		mov	dx, MISC_OUTPUT
+		mov	al, 0e7h
+		out	dx, al		;Select 28MHz dot clock & 60Hz scanning
+					;mode
+		mov	dx, SC_INDEX
+		mov	ax, 0300h
+		out	dx, ax		;Undo reset (restart sequencer)
+
+		mov	dx, CRTC_INDEX	;Reprogram the CRTC controller
+		mov	al, 11h		;VSync end reg contains register write
+		out	dx, al		;protect bit
+		inc	dx		;CRT controller data register
+		in	al, dx		;Get current VSync End register setting
+		and	al, 7fh		;Remove write protect on various
+		out	dx, al		;CRTC resgisters
+		dec	dx
+		cld
+		mov	si, offset CRTParms	;Point to CRTC parameter table
+		mov	cx, CRT_PARM_LENGTH	;# of table entries
+SetCRTParmLoop:	lodsw		;Get the next CRT index/data pair
+		out	dx, ax	;Set the next CRT index/data pair
+		loop	SetCRTParmLoop
+
+		mov	dx, SC_INDEX
+		mov	ax, 0f02h
+		out	dx, ax		;Enable writes to all four planes
+		mov	ax, SCREEN_SEG	;Now clear the display memory
+		mov	es, ax		;8 pixels at a time
+		sub	di, di		;Point ES:DI to display memory
+		sub	ax, ax		;Clear to zero value pixels
+		mov	cx, 8000h	;# words in display memory
+		rep	stosw		;Clear all of display memory
+
+		ret
+
+SetModeX	endp
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                                                                      ;;
+;;                        TEMPORARY DATA AREAS                          ;;
+;;                                                                      ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+SCREEN_WIDTH    equ     80
+vidmode         db      ?		;Current video mode
+vidpage		db	?		;Current video page
+pageaddr	dw	?		;Video page memory offset
+cursorpos	dw	?		;Cursor row & col
+textsave        dw      SCREEN_SIZE dup (?)     ;Save area for text screens
+
+pageno		dw	0
+pages		dw	0, (SCREEN_WIDTH*240)	;Start addressed for pages
+rowoffsets      label   word            ;Table of row offsets (480 rows)
+                i = 0
+                REPT 480
+                  dw    i
+                  i = i + SCREEN_WIDTH
+                ENDM
+char_rows	db	?		;Height of chars in set
+char_set:
+char_off	dw	?
+char_seg	dw	?
+
+sinus           db      ?               ;1 for sinus effect
+Scroll_Offset	db	0
+Char_Offset	db	?
+Char_Width	db	?
+Sinus_Delta	dw	?
+Message_Index	dw	0
+
+RGB		MACRO 	r, g, b
+		db	r, g, b
+		ENDM
+
+Palette		label	byte
+		RGB	63, 0, 0
+		RGB	60, 0, 4
+		RGB	56, 0, 8
+		RGB	52, 0, 12
+		RGB	48, 0, 16
+		RGB	44, 0, 20
+		RGB	40, 0, 24
+		RGB	36, 0, 28
+		RGB	32, 0, 32
+		RGB	28, 0, 36
+		RGB	24, 0, 40
+		RGB	20, 0, 44
+		RGB	16, 0, 48
+		RGB	12, 0, 52
+		RGB	08, 0, 56
+		RGB	04, 0, 60
+		RGB	00, 0, 63
+		RGB	04, 0, 60
+		RGB	08, 0, 56
+		RGB	12, 0, 52
+		RGB	16, 0, 48
+		RGB	20, 0, 44
+		RGB	24, 0, 40
+		RGB	28, 0, 36
+		RGB	32, 0, 32
+		RGB	36, 0, 28
+		RGB	40, 0, 24
+		RGB	44, 0, 20
+		RGB	48, 0, 16
+		RGB	52, 0, 12
+		RGB	56, 0, 8
+last_bar_entry:	RGB	60, 0, 4
+BAR_PALETTE_LEN	equ	(($-Palette)/3)
+PALETTE_LENGTH	equ	(($-Palette)/3)
+
+HPERIOD		MACRO	a 	 ;;Constructs a half-period (a = amplitude)
+                dw      0000*a/1000, 0049*a/1000, 0078*a/1000, 0118*a/1000
+                dw      0156*a/1000, 0195*a/1000, 0233*a/1000, 0271*a/1000
+                dw      0309*a/1000, 0346*a/1000, 0383*a/1000, 0419*a/1000
+                dw      0454*a/1000, 0489*a/1000, 0522*a/1000, 0556*a/1000 
+                dw      0588*a/1000, 0619*a/1000, 0649*a/1000, 0679*a/1000 
+                dw      0707*a/1000, 0734*a/1000, 0760*a/1000, 0785*a/1000
+                dw      0809*a/1000, 0831*a/1000, 0853*a/1000, 0872*a/1000 
+                dw      0891*a/1000, 0908*a/1000, 0924*a/1000, 0938*a/1000 
+                dw      0951*a/1000, 0962*a/1000, 0972*a/1000, 0981*a/1000 
+                dw      0988*a/1000, 0993*a/1000, 0997*a/1000, 0999*a/1000
+                ;;
+                dw      1000*a/1000, 0998*a/1000, 0995*a/1000, 0991*a/1000
+                dw      0984*a/1000, 0977*a/1000, 0968*a/1000, 0957*a/1000
+                dw      0945*a/1000, 0931*a/1000, 0916*a/1000, 0900*a/1000 
+                dw      0882*a/1000, 0863*a/1000, 0842*a/1000, 0820*a/1000 
+                dw      0797*a/1000, 0773*a/1000, 0748*a/1000, 0721*a/1000 
+                dw      0693*a/1000, 0664*a/1000, 0634*a/1000, 0604*a/1000 
+                dw      0572*a/1000, 0539*a/1000, 0506*a/1000, 0471*a/1000 
+                dw      0436*a/1000, 0401*a/1000, 0364*a/1000, 0328*a/1000 
+                dw      0290*a/1000, 0252*a/1000, 0214*a/1000, 0176*a/1000 
+                dw      0137*a/1000, 0098*a/1000, 0059*a/1000, 0020*a/1000 
+		ENDM
+
+SINE            MACRO   a       ;;Creates a 1-peiod sine wave
+		HPERIOD	a
+		HPERIOD	-a
+		ENDM
+
+No_Sinus:       dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 ;For flat chout's
+Sine_Table:     SINE    25                              ;For sinus effect
+                SINE    25
+
+needVGA		db	'You must have VGA to run this!', 0ah, 0dh, '$'
+needRAM		db	'Couldn''t allocate necessary memory!', 0ah, 0dh, '$'
+message         db      '                    Call CHRONIC ANARCHY BBS, (046) 473-114.  This scrolly was coded by Tony Miceli in 100% asm, June ''95...', 0
+MESSAGE_LENGTH	equ	$-message
+
+;; MODE X DATA AREA/CONSTANTS
+
+SC_INDEX	equ	03c4h	;Sequencer controller index
+MAP_MASK	equ	02h	;Index in SC for map mask
+CRTC_INDEX	equ	03d4h	;CRT controller index
+MISC_OUTPUT	equ	03c2h	;Miscellaneous output register
+SCREEN_SEG	equ	0a000h	;Display memory segment
+
+;Index/data pairs for CRT controller registers that differ between
+;mode 13h and mode X
+
+CRTParms	label	word
+		dw	00d06h	;Vertical total
+		dw	03e07h	;Overflow (bit 8 of vertical counts)
+		dw	04109h	;Cell height (2 to double-scan)
+		dw	0ea10h	;V sync start
+		dw	0ac11h	;V sync end and protect cr0-cr7
+		dw	0df12h	;Vertical displayed
+		dw	00014h	;Turn off dword mode
+		dw	0e715h	;V blank start
+		dw	00616h	;V blank end
+		dw	0e317h	;Turn on byte mode
+CRT_PARM_LENGTH	equ	(($-CRTParms)/2)
+
+;;;;;;;;;;;;;;; END OF MODE-X DATA/CONSTANTS ;;;;;;;;;;;;;;;
+last_byte:
+
+cseg		ends
+                end     start

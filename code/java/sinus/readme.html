@@ -1,0 +1,65 @@
+<HTML>
+<HEAD>
+    <TITLE>Java Sinus Scroller Applet Documentation</TITLE>
+</HEAD>
+
+<BODY>
+<CENTER>
+<H1><FONT COLOR="blue">Sinus v1.0 -- Java Sinus Scroller Applet.</FONT></H1>
+Copyright (c) 1996 Anthony Miceli.
+</CENTER>
+<BR>
+<HR ALIGN="center" WIDTH="50%">
+<P>
+The sinus applet included in this archive is a simple, visually attractive mechanism for smoothly scrolling text across the display.  The text wraps around a sine wave as it scrolls to the left and changes colour as it oscillates vertically.  To pause the scrolling at any time, click the left mouse button anywhere within the applet.  Repeating this action resumes the scrolling.  This applet will run best when viewed with a browser that implements a Just-In-Time compiler (such as Internet Explorer 3.0/Netscape Navigator 3.0).  It was written using Symantec Cafe 1.50.
+</P>
+
+<CENTER><FONT COLOR="blue" SIZE=+2><B>USAGE</B></FONT></CENTER>
+<BR>
+To embed the applet into your HTML document, use the following syntax:
+<BR>
+<BR>
+<CENTER>
+<TABLE>
+<TR><TD><CODE>&lt;APPLET CODE="sinus.class" WIDTH=www HEIGHT=hhh&gt;
+<BR>&lt;PARAMETERS...&gt;
+<BR>&lt;/APPLET&gt</CODE></TD></TR>
+</TABLE>
+</CENTER>
+<BR>
+The following parameters are supported by this applet.  All are optional:
+<BR>
+<BR>
+<CENTER>
+<TABLE BORDER=1 WIDTH="100%">
+<TR><TH>NAME</TH><TH>TYPE</TH><TH>DESCRIPTION</TH></TR>
+<TR><TD>message</TD><TD>text string</TD><TD>This is your message to be displayed.  Note that a short message will follow your text.</TD></TR>
+<TR><TD>ypos</TD><TD>integer</TD><TD>Vertical position for the center of the sine wave.
+<BR>Defaults to the height of the applet/2.</TD></TR>
+<TR><TD>amplitude</TD><TD>integer</TD><TD>Height of the sine wave in pixels.
+<BR>Defaults to the height of the applet/4.</TD></TR>
+<TR><TD>char height</TD><TD>integer</TD><TD>Height of the text (1 = normal, 2 = double etc).
+<BR>Defaults to 2.</TD></TR>
+<TR><TD>char width</TD><TD>integer</TD><TD>Width of the text (1 = normal, 2 = double etc).
+<BR>Defaults to 1.</TD></TR>
+<TR><TD>scroll speed</TD><TD>integer</TD><TD>Speed of the scroll (in pixels per frame).
+<BR>Defaults to 4 pixels/frame.</TR>
+<TR><TD>scroll delay</TD><TD>integer</TD><TD>Millisecond delay between frames.
+<BR>Defaults to 100ms.</TD></TR>
+<TR><TD>ripple speed</TD><TD>integer</TD><TD>Speed of the ripple effect (in pixels per second).
+<BR>Defaults to 4 pixels/frame.</TD></TR>
+</TABLE>
+<BR>
+<BR>
+<FONT COLOR="blue" SIZE=+2><B>VERSION HISTORY</B></FONT>
+<BR>
+<BR>
+<TABLE BORDER=1 WIDTH="100%">
+<TR><TH>DATE</TH><TH>VERSION</TH><TH>COMMENTS</TH></TR>
+<TR><TD>13/11/96</TD><TD>1.0</TD><TD>Written.</TD></TR>
+<TR><TD>23/11/96</TD><TD>1.01</TD><TD>Improved colour fade effect.</TD></TR>
+</TABLE>
+<BR>
+<BR>
+</BODY>
+</HTML>

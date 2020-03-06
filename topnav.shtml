@@ -1,0 +1,6 @@
+<ul id="minitabs">
+  <li><a<!--#if expr="$page = /home/"--> id="current"<!--#endif--> href="/">home</a></li>
+  <li><a<!--#if expr="$page = /software/" --> id="current"<!--#endif--> href="/software.shtml">software</a></li>
+  <li><a<!--#if expr="$page = /code/" --> id="current"<!--#endif--> href="/code.shtml">code</a></li>
+  <li><a href="http://blog.anthonymiceli.com">blog</a></li>
+</ul>

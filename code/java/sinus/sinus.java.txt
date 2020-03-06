@@ -1,0 +1,369 @@
+/*
+    This class is a basic extension of the Applet class.  It would generally
+    be used as the main class with a Java browser or the AppletViewer.  But
+    an instance can be added to a subclass of Container.  To use this applet
+    with a browser or the AppletViewer, create an html file with the
+    following code:
+
+    <HTML>
+    <HEAD>
+    <TITLE> sinus </TITLE>
+    </HEAD>
+    <BODY>
+
+    <APPLET CODE="sinus.class" WIDTH=283 HEIGHT=190></APPLET>
+
+    </BODY>
+
+    </HTML>
+
+    You can add controls to sinus with Cafe Studio.
+    (Menus can be added only to subclasses of Frame.)
+
+    Copyright (c) 1996, Anthony Miceli
+ */
+
+import java.awt.*;
+import java.applet.*;
+
+public class sinus extends Applet implements Runnable {
+
+    Thread runner;
+    int xpos, ypos;
+
+    Image imgBuffer;
+    Graphics gBuffer;
+
+    byte charData[] = { 0, 0, 0 ,0 ,0 ,0 ,0, 0, // SPC
+                        16, 16, 16, 16, 16, 16, 0, 16, // !
+                        40, 40, 0, 0, 0, 0, 0, 0, // "
+                        36, 36, 126, 36, 126, 36, 36, 36, // #
+                        8, 60, 72, 60, 10, 10, 60, 8, // $
+                        (byte)224, (byte)164, (byte)232, 16, 16, 46, 74, 14, // %
+                        48, 72, 72, 48, 80, 74, 68, 58, // &
+                        16, 16, 0, 0, 0, 0, 0, 0, // '
+                        8, 16, 32, 32, 32, 32, 16, 8, // (
+                        32, 16, 8, 8, 8, 8, 16, 32, // )
+                        0, 0, 36, 24, 126, 24, 36, 0, // *
+                        0, 0, 16, 16, 124, 16, 16, 0, // +
+                        0, 0, 0, 0, 24, 8, 8, 16, // ,
+                        0, 0, 0, 0, 124, 0, 0, 0, // -
+                        0, 0, 0, 0, 0, 0, 24, 24, // .
+                        2, 4, 8, 16, 32, 64, (byte)128, 0, // /
+                        60, 66, 70, 74, 82, 98, 66, 60, // 0
+                        16, 48, 16, 16, 16, 16, 16, 56,
+                        60, 66, 2, 4, 24, 32, 64, 126, // 2
+                        60, 66, 2, 12, 2, 2, 66, 60, // 3
+                        4, 12, 20, 36, 68, 126, 4, 4, // 4
+                        126, 64, 64, 60, 2, 2, 66, 60, // 5
+                        28, 32, 64, 124, 66, 66, 66, 60, // 6
+                        126, 2, 4, 8, 16, 16, 16, 16, // 7
+                        60, 66, 66, 60, 66, 66, 66, 60, // 8
+                        60, 66, 66, 66, 62, 2, 4, 56, // 9
+                        0, 0, 0, 24, 0, 24, 0, 0, // :
+                        0, 0, 0, 24, 0, 24, 8, 16, // ;
+                        0, 0, 6, 24, 96, 24, 6, 0, // <
+                        0, 0, 0, 124, 0, 124, 0, 0, // =
+                        0, 0, 96, 24, 6, 24, 96, 0, // >
+                        60, 66, 2, 12, 16, 16, 0, 16, // ?
+                        60, 66, (byte)154, (byte)170, (byte)170, (byte)158, 64, 60, // @
+                        60, 66, 66, 66, 126, 66, 66, 66, // A
+                        124, 66, 66, 124, 66, 66, 66, 124, // B
+                        60, 66, 64, 64, 64, 64, 66, 60, // C
+                        124, 66, 66, 66, 66, 66, 66, 124, // C
+                        126, 64, 64, 120, 64, 64, 64, 126, // E
+                        126, 64, 64, 120, 64, 64, 64, 64, // F
+                        60, 66, 64, 64, 70, 66, 66, 62, // G
+                        66, 66, 66, 126, 66, 66, 66, 66, // H
+                        56, 16, 16, 16, 16, 16, 16, 56, // I
+                        30, 4, 4, 4, 4, 4, 68, 56, // J
+                        66, 66, 68, 120, 68, 66, 66, 66, // K
+                        64, 64, 64, 64, 64, 64, 64, 126, // L
+                        (byte)130, (byte)198, (byte)170, (byte)146, (byte)130, (byte)130, (byte)130, (byte)130, // M
+                        66, 98, 82, 82, 74, 74, 70, 66, // N
+                        60, 66, 66, 66, 66, 66, 66, 60, // O
+                        124, 66, 66, 124, 64, 64, 64, 64, // P
+                        60, 66, 66, 66, 66, 74, 70, 62, // Q
+                        124, 66, 66, 124, 66, 66, 66, 66, // R
+                        60, 66, 64, 60, 2, 2, 66, 60, // S
+                        124, 16, 16, 16, 16, 16, 16, 16, // T
+                        66, 66, 66, 66, 66, 66, 66, 60, // U
+                        66, 66, 66, 66, 66, 36, 36, 24, // V
+                        (byte)130, (byte)130, (byte)130, (byte)130, (byte)146, (byte)170, (byte)198, (byte)130, // W
+                        66, 66, 36, 24, 36, 66, 66, 66, // X
+                        (byte)130, 68, 40, 16, 16, 16, 16, 16, // Y
+                        126, 2, 4, 8, 16, 32, 64, 126, // Z
+                      };
+
+// Arguments
+    double amplitude;
+    int scrollSpeed;
+    int scrollDelay;
+    int rippleSpeed;
+    int mulWidth;
+    int mulHeight;
+//
+    int appWidth, appHeight;
+    boolean running;
+
+    final int charWidth = 8, charHeight = 8;
+
+    int sineTable[];
+    int charPos, sineOffset;
+
+    Color colourTable[];
+    String strMsg;
+
+    public void init() {
+
+        super.init();
+
+        charPos = 0;
+        appWidth = size().width;
+        appHeight = size().height;
+
+        // Get applet parameters
+        getAppletParameters();
+
+        buildSineTable(appWidth);
+        buildColourTable();
+
+        sineOffset = appWidth;
+
+        imgBuffer = createImage(appWidth, appHeight);
+        gBuffer = imgBuffer.getGraphics();
+
+        //{{INIT_CONTROLS
+        setLayout(null);
+        resize(283,189);
+        //}}
+    }
+
+    public String[][] getParameterInfo() {
+        String[][] info = {
+            // Array of arrays of strings describing each parameter
+            // Name, type, description
+            {"message", "text string", "message to be displayed"},
+            {"ypos", "integer", "vertical position for the center of the sine wave"},
+            {"amplitude", "integer", "height of the sine wave"},
+            {"char height", "integer", "height of the text (1 = normal, 2 = double)"},
+            {"char width", "integer", "width of the text (1 = normal, 2 = double)"},
+            {"scroll speed", "integer", "speed of the scroll (in pixels per frame)"},
+            {"scroll delay", "integer", "millisecond delay between frames"},
+            {"ripple speed", "integer", "speed of the ripple effect (in pixels per second)"}
+        };
+        return info;
+    }
+
+    public String getAppletInfo() {
+        return "Sinus v1.0.1 by Anthony Miceli";
+    }
+
+    protected void getAppletParameters() {
+        String value;
+                       //   .   .   .   t   h   i   s      s   i   n   u   s      s   c   r   o   l   l   e   r      a   p   p   l   e  t       w   a   s      c   o   d   e   d      b   y      a   n   t   h   o   n   y      m   i   c   e   l   i     (   a   m   i   c   e   l   i   @   f   a   s   t   l   i   n   k   .   c   o   m   .   a   u  )   ,      1   9   9   6   .   .   .
+        byte trailer[] = { 14, 14, 14, 52, 40, 41, 51, 0, 51, 41, 46, 53, 51, 0, 51, 35, 50, 47, 44, 44, 37, 50, 0, 33, 48, 48, 44, 37, 52, 0, 55, 33, 51, 0, 35, 47, 36, 37, 36, 0, 34, 57, 0, 33, 46, 52, 40, 47, 46, 57, 0, 45, 41, 35, 37, 44, 41, 0, 8, 33, 45, 41, 35, 37, 44, 41, 32, 38, 33, 51, 52, 44, 41, 46, 43, 14, 35, 47, 45, 14, 33, 53, 9, 12, 0, 17, 25, 25, 22, 14, 14, 14 };
+
+        strMsg = getParameter("message");
+        if (strMsg == null)
+            strMsg = "";
+
+        for (int i = 0; i < trailer.length; i++)
+            strMsg += (char)(trailer[i]+32);
+
+        value = getParameter("ypos");
+        try { ypos = Integer.parseInt(value, 10); }
+        catch(Exception e) { ypos = appHeight>>1; }
+
+        value = getParameter("amplitude");
+        try { amplitude = Double.valueOf(value).doubleValue(); }
+        catch(Exception e) { amplitude = appHeight/4.0; }
+
+        value = getParameter("char height");
+        try { mulHeight = Integer.parseInt(value, 10); }
+        catch(Exception e) { mulHeight=2; }
+
+        value = getParameter("char width");
+        try { mulWidth = Integer.parseInt(value, 10); }
+        catch(Exception e) { mulWidth=1; }
+
+        value = getParameter("scroll speed");
+        try { scrollSpeed = Integer.parseInt(value, 10); }
+        catch(Exception e) { scrollSpeed=4; }
+
+        value = getParameter("scroll delay");
+        try { scrollDelay = Integer.parseInt(value, 10); }
+        catch(Exception e) { scrollDelay = 100; }
+
+        value = getParameter("ripple speed");
+        try { rippleSpeed = Integer.parseInt(value, 10); }
+        catch(Exception e) { rippleSpeed = 4; }
+
+        ypos -= (mulHeight<<2);
+    }
+
+    public void start() {
+        if (runner == null) {
+            running = true;
+            runner = new Thread(this);
+            runner.start();
+        }
+    }
+
+    public void stop() {
+        if (runner != null) {
+            running = false;
+            runner.stop();
+            runner = null;
+        }
+    }
+
+    public void run() {
+        xpos=appWidth+(charWidth*mulWidth);
+        while (true) {
+            if (running) {
+//            repaint();
+                paint(getGraphics());
+                xpos-=scrollSpeed;
+                sineOffset-=rippleSpeed;
+                if (sineOffset < 0)
+                    sineOffset = appWidth;
+
+                if (xpos <= -(charWidth*mulWidth))
+                {
+                    charPos++;
+                    if (charPos >= strMsg.length())
+                        charPos=0;
+                    xpos += (charWidth*mulWidth);
+                }
+            }
+            try { Thread.sleep(scrollDelay); }
+            catch (InterruptedException e) {}
+        }
+    }
+
+    public boolean mouseDown(Event evt, int x, int y) {
+        running = !running;
+
+        return true; // Event handled
+    }
+
+//    public void update(Graphics g) {
+//        paint(g);
+//    }
+
+    public void paint(Graphics g) {
+        // Paint into the offscreen buffer
+        gBuffer.setColor(Color.black);
+        gBuffer.fillRect(0, 0, appWidth, appHeight);
+
+        drawSinusText(gBuffer, xpos, ypos, strMsg, charPos);
+
+        // Copy to display
+        g.drawImage(imgBuffer, 0, 0, this);
+    }
+
+    public void drawSinusText(Graphics g, int xpos, int ypos, String str, int cPos) {
+        int row, col, data, i, xp, yp, sineVal;
+        int bitMask;
+        char ch;
+        g.setColor(Color.white);
+
+        while (xpos < appWidth) {
+
+            ch = Character.toUpperCase(str.charAt(cPos));
+
+            if (ch >= 32 && ch <= 90)
+                data = (ch-32)*8;
+            else
+                data = 0; // use space for non-supported chars
+
+            yp = ypos;
+            for (row = 0; row < charHeight; row++)
+            {
+                xp = xpos;
+                bitMask = 128;
+                for (col = 0; col < charWidth; col++)
+                {
+                    if (xp >= 0)
+                    {
+                        if (xp < appWidth && ((charData[data] & bitMask) != 0))
+                        {
+                            if (xp+sineOffset < appWidth)
+                                sineVal = sineTable[xp+sineOffset];
+                            else
+                                sineVal = sineTable[xp+sineOffset-appWidth];
+                            g.setColor(colourTable[((yp+sineVal)/2) & 31]);
+                            g.fillRect(xp, yp+sineVal, mulWidth, mulHeight);
+                        }
+                        bitMask>>>=1;
+                    }
+                    xp+=mulWidth;
+                }
+                data++;
+                yp+=mulHeight;
+            }
+
+            xpos += (charWidth*mulWidth);
+            cPos++;
+            if (cPos >= str.length())
+                cPos -= str.length();
+        }
+    }
+
+    public void buildSineTable(int len)
+    {
+        sineTable = new int[len];
+        double result, angle = 0, inc = (2*Math.PI) / len;
+
+        for (int i = 0; i < len; i++)
+        {
+            sineTable[i] = (int)(amplitude * Math.sin(angle));
+            angle += inc;
+        }
+    }
+
+    public void buildColourTable() {
+        colourTable = new Color[32];
+
+        colourTable[0]  = new Color(0xff, 0x55, 0x00);
+        colourTable[1]  = new Color(0xee, 0x55, 0x11);
+        colourTable[2]  = new Color(0xdd, 0x55, 0x22);
+        colourTable[3]  = new Color(0xcc, 0x55, 0x33);
+        colourTable[4]  = new Color(0xbb, 0x55, 0x44);
+        colourTable[5]  = new Color(0xaa, 0x55, 0x55);
+        colourTable[6]  = new Color(0x99, 0x55, 0x66);
+        colourTable[7]  = new Color(0x88, 0x55, 0x77);
+        colourTable[8]  = new Color(0x77, 0x55, 0x88);
+        colourTable[9]  = new Color(0x66, 0x55, 0x99);
+        colourTable[10] = new Color(0x55, 0x55, 0xaa);
+        colourTable[11] = new Color(0x44, 0x55, 0xbb);
+        colourTable[12] = new Color(0x33, 0x55, 0xcc);
+        colourTable[13] = new Color(0x22, 0x55, 0xdd);
+        colourTable[14] = new Color(0x11, 0x55, 0xee);
+        colourTable[15] = new Color(0x00, 0x55, 0xff);
+        colourTable[16] = new Color(0x00, 0x55, 0xff);
+        colourTable[17] = new Color(0x11, 0x55, 0xee);
+        colourTable[18] = new Color(0x22, 0x55, 0xdd);
+        colourTable[19] = new Color(0x33, 0x55, 0xcc);
+        colourTable[20] = new Color(0x44, 0x55, 0xbb);
+        colourTable[21] = new Color(0x55, 0x55, 0xaa);
+        colourTable[22] = new Color(0x66, 0x55, 0x99);
+        colourTable[23] = new Color(0x77, 0x55, 0x88);
+        colourTable[24] = new Color(0x88, 0x55, 0x77);
+        colourTable[25] = new Color(0x99, 0x55, 0x66);
+        colourTable[26] = new Color(0xaa, 0x55, 0x55);
+        colourTable[27] = new Color(0xbb, 0x55, 0x44);
+        colourTable[28] = new Color(0xcc, 0x55, 0x33);
+        colourTable[29] = new Color(0xdd, 0x55, 0x22);
+        colourTable[30] = new Color(0xee, 0x55, 0x11);
+        colourTable[31] = new Color(0xff, 0x55, 0x00);
+    }
+
+    public boolean handleEvent(Event event) {
+        return super.handleEvent(event);
+    }
+
+    //{{DECLARE_CONTROLS
+    //}}
+}

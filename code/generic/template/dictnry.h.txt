@@ -1,0 +1,129 @@
+#if !defined(__ajm_dict_h)
+#define __ajm_dict_h
+
+/*
+	 Copyright © 1994 Tony Miceli. All Rights Reserved.
+
+	 FILE:         dictnry.h
+	 AUTHOR:       Tony Miceli
+
+
+	 OVERVIEW
+	 ========
+	 Class template definition for data-dictionary.  To use,
+	 just specify a class containing the data structure for the
+	 node structure for the dictionary entries, and the data-
+	 type for the key.
+	 NOTE: This class assumes that the node specified has valid
+			 operator== and operator< which compares the key.
+
+	 MODIFICATION HISTORY
+	 ====================
+	  8/10/1994		 Class written.
+	 14/10/1994		 Altered to make use of the new dispose() list method.
+
+	 CLASS DICTIONARY: SPECIFICATION
+	 ===============================
+	 Base class for ordered dictionary.
+
+	 METHODS:
+	 ========
+
+	 int addItem( T &item )
+			- Adds item T to the dictionary. Uses insertion sort
+			  algorithm to maintain an ordered list.
+
+	 int remItem( const KEY &key )
+			- Removes item with the given key.  Returns TRUE if successful.
+
+	 T *findItem( const KEY &key )
+			- Locates item with the given key.  Returns NULL if couldn't
+			  find.
+*/
+
+#include <list.h>
+
+// If list debugging is turned on, inherit with public access, so
+// that client code can traverse the list manually.  Otherwise,
+// use protected access which is more correct in the context of my
+// design
+
+template <class T, class KEY>
+#ifdef LIST_DEBUG
+class Dictionary : public List<T>
+#else
+class Dictionary : protected List<T>
+#endif
+{
+public:
+
+	Dictionary( void );
+	~Dictionary( void );
+	T *addItem( const T &item );
+	int removeItem( KEY key );
+	T *findItem( KEY key );
+};
+
+/////////////////////////////////////////////////////////////////
+//																					//
+//              CLASS DICTIONARY IMPLEMENTATION                //
+//																					//
+/////////////////////////////////////////////////////////////////
+
+#ifndef NULL
+	#define NULL 0L
+#endif
+
+template<class T, class KEY>
+inline Dictionary<T, KEY>::Dictionary( void )
+								  :List<T>() {
+	// Currently does nothing
+}
+
+template<class T, class KEY>
+inline Dictionary<T, KEY>::~Dictionary( void ) {
+	// Currently does nothing
+}
+
+template<class T, class KEY>
+T *Dictionary<T, KEY>::addItem( const T &item )
+{
+	if(start()) // Start list iteration
+		while( (getCurrent()) && (*getCurrent() < item) )
+			next();
+
+		return insert( item ); // Adds before current node, or at tail
+}
+
+template<class T, class KEY>
+int Dictionary<T, KEY>::removeItem( KEY key )
+{
+	if(start()) { // Start list iteration
+		while( (getCurrent()) && (*getCurrent() < key) )
+			next();
+
+		if( *getCurrent() == key ) { // Exact match ?
+			dispose();
+			return 1;
+		}
+	}
+
+	return 0; // Empty list, or couldn't find node
+}
+
+template<class T, class KEY>
+T *Dictionary<T, KEY>::findItem( KEY key )
+{
+	if(start()) { // Start list iteration
+		while( (getCurrent()) && (*getCurrent() < key) )
+			next();
+
+		if( *getCurrent() == key ) // Exact match ?
+			return getCurrent();
+	}
+
+	return NULL; // Empty list, or couldn't find node
+}
+
+#endif // __ajm_dict_h
+
