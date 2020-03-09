@@ -11,8 +11,8 @@ ul#minitabs a#current{border-color: #059;color:#06A;}
 ul#minitabs a:hover{border-color: #555;color: #666;}
 
 div#home_content{float: left;width: 100%;}
-div#home_col1{margin-right: 200px;}
-div#home_col2{float: left;width: 200px;margin-left:-200px;}
+div#home_col1{margin-right: 290px;}
+div#home_col2{float: left;width: 280px;margin-left:-280px;}
 div#home_col2 div#content {padding-top:20px;text-align:right;}
 
 table#software_toc {width:80%;padding:12px 0;}
