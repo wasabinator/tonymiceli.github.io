@@ -1,5 +1,17 @@
 body{font:12px verdana,sans-serif;text-align:center;min-width:600px; padding: 0 0; margin: 0 0;}
-div#content{margin:0 auto;padding-top:10px;padding-left:30px;text-align:left;}
+div#content{
+  margin:0 auto;margin-top:100px;padding-left:30px;text-align:left;
+}
+div#content:before {
+  content: " ";
+  position: fixed;
+  top: 90;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  height:5px;
+  background: linear-gradient(rgba(3, 3, 3, 0.5) 0%, rgba(4, 4, 4, 0) 100%);
+}
 
 ul#minitabs{position: absolute; list-style:none; margin: 30px; padding: 0; white-space: nowrap;font-size:175%;}
 ul#minitabs li{display: inline;margin: 0 3px}
@@ -10,12 +22,15 @@ ul#minitabs a:hover{color: #EEE;}
 div#minitabs {
   display: block;
   height: 90px;
+  position: fixed;
+  top: 0;
+  width: 100%;
   background: linear-gradient(rgba(3, 3, 3, 0.5) 0%, rgba(4, 4, 4, 0) 10%, rgba(4, 4, 4, 0) 90%, rgba(3, 3, 3, 0.5) 100%), linear-gradient(90deg, #333 0%, #444 1%, #444 99%, #333 100%);
 }
 div#minitabs::before {
   content: " ";
   position: absolute;
-  height: 90px;
+  height: 90px; 
   top: 0;
   left: 0;
   bottom: 0;
@@ -25,9 +40,10 @@ div#minitabs::before {
   background-size: 100% 2px, 3px 100%;
   pointer-events: none;
 }
+
 div#home_content{float: left;width: 100%;}
 div#home_col1{margin-right: 310px;}
-div#home_col2{float: left;width: 280px;margin-left:-280px;}
+div#home_col2{float: left;width: 280px;margin-left:-290px; }
 div#home_col2 div#content {padding-top:20px;text-align:right;}
 
 img#screenshot { border: 1px solid #ddd; }
