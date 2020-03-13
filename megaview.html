@@ -1,0 +1,9 @@
+---
+section: code
+---
+{% include header.html %}
+<p><h1>MegaView</h1></p>
+<p>This program became quite popular with the local bulletin board community.  When MegaView was run, it would first patch itself into the operating system and then sleep.  When a new file began to download, it would be awoken via a special task signal.  What it would then do is intercept the downloading file and display it to the user (if it was a recognisable type).  This would allow the user to determine if the file was what they were looking for and cancel the download if necessary before having to wait for the entire transfer to complete.  Since 2400bps modems were the norm back then, this could actually save a good deal of time which could otherwise be spent on more useful downloads.</p>
+<p>The application received a number of mentions in Amiga publications such as "Australian Commodore and Amiga Review".  This program was also coded in 68000 assembly language and since it was one of my first real efforts with 68000, some areas could have been improved.</p>
+<p><A HREF="code/amiga/megaview/mview24b.asm.txt">See the code</a>, and <A HREF="code/amiga/megaview/mview24b.txt">See the readme</a>.</p>
+{% include footer.html %}

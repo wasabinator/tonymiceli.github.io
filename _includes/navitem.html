@@ -1,1 +1,1 @@
-<li><a{% if page.name == include.file %} id="current" {% else %} href="./{{ include.file }}" {% endif %}>{{ include.name }}</a></li>
+<li><a{% if page.section == include.name %} id="current" {% endif %} {% if page.name != include.file %} href="./{{ include.file }}" {% endif %}>{{ include.name }}</a></li>
