@@ -42,13 +42,13 @@ div#minitabs::before {
 }
 
 /* Phones */
-@media only screen and (max-width: 650px) {
+@media only screen and (max-width: 700px) {
   div#home_col1{ margin-right: 0px; }
   div#home_col2{ display:none; }
 }
 
 /* Other */
-@media only screen and (min-width: 650px) {
+@media only screen and (min-width: 701px) {
   div#home_col1{float: left; margin-right: 310px;}
   div#home_col2{float: left; width: 280px; margin-top:10px; margin-left:-280px; }
 }
