@@ -85,6 +85,10 @@ div#item {
   margin: 20px 30px;
 }
 
+img#social-icon {
+  width: 32px; height; 32px; border: 0;
+}
+
 .button {
   width: inherit;
 	background-color:transparent;
