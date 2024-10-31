@@ -25,7 +25,6 @@ div#minitabs {
   position: fixed;
   top: 0;
   width: 100%;
-  background: linear-gradient(rgba(3, 3, 3, 0.5) 0%, rgba(4, 4, 4, 0) 10%, rgba(4, 4, 4, 0) 90%, rgba(3, 3, 3, 0.5) 100%), linear-gradient(90deg, #333 0%, #444 1%, #444 99%, #333 100%);
 }
 div#minitabs::before {
   content: " ";
@@ -35,7 +34,6 @@ div#minitabs::before {
   left: 0;
   bottom: 0;
   right: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 0%, rgba(0, 0, 0, 0.5) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
   z-index: 2;
   background-size: 100% 2px, 3px 100%;
   pointer-events: none;
