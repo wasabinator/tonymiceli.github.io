@@ -25,9 +25,7 @@ div#minitabs {
   position: fixed;
   top: 0;
   width: 100%;
-  background: linear-gradient(to top, #000000, #000000, #333333, #333333);
-  background-size: cover;
-  background-size: 100% 1px;
+  background: rgba(3, 3, 3, 0.8);
 }
 div#minitabs::before {
   content: " ";
